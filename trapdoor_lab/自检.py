@@ -8,6 +8,7 @@ from l2_shooting import solve_shooting
 from l3_rate import solve_rate
 from gtt import check_table_13_2, mechanism_scan, tangent_params
 from benchmarks import check_literature_anchors
+from cases import selfcheck_cases, case_summary
 
 r = solve(DEFAULT_PARAMS, "active")
 t = reproduce_tables()
@@ -57,6 +58,16 @@ print(" 二期文献锚点: 1g %d / 离心机 %d / 速率适用域 %d 项, 自�
          lit["counts"]["rate_applicability"], "通过" if lit["all_pass"] else "未过"))
 print("   beta_eff 区间半宽 %.2f%% (标注 ±11%%), 出露角 61°, N_sat=18.2212"
       % lit["beta_half_span_pct"])
+csc = selfcheck_cases()
+csu = case_summary()
+uplift_ratio = [x["width_over_span"] for x in csu["width_over_span"]
+                if x["id"] == "tunnel-uplift"]
+print("-" * 64)
+print(" M9 工程案例: 5 案例复算 %s, 反验 %s, 地表宽/洞跨 主动 %.2f–%.2f / 顶起 %.2f"
+      % ("全部吻合" if csc["all_book_comparison_ok"] else "有偏差",
+         "通过" if csc["selfcheck_Lc_at_hcr"] else "未过",
+         csu["active_range"][0], csu["active_range"][1],
+         uplift_ratio[0] if uplift_ratio else float("nan")))
 print("=" * 64)
 checks = [
     abs(r.psi0_deg - 37.56) < 0.01,
@@ -74,6 +85,7 @@ checks = [
     tan0["selfcheck_residual"] < 1e-10
     and abs(tan0["c_t"] - DEFAULT_PARAMS["A"] * DEFAULT_PARAMS["sigma_t"]) < 1e-10,
     lit["all_pass"] and lit["counts"]["one_g"] >= 10,
+    csc["all_pass"] and csu["all_comparison_ok"] and csu["n_cases"] == 5,
 ]
 print("自检结果: %s (%d/%d 通过)" % ("全部通过" if all(checks) else "存在失败",
                                    sum(checks), len(checks)))

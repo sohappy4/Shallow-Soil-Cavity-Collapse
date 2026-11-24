@@ -25,7 +25,24 @@ mkdir -p ../.pip_tmp
 TMPDIR="$(cd .. && pwd)/.pip_tmp" "$PY" -m PyInstaller --noconfirm --onedir \
   --name trapdoor-lab --log-level=WARN app.py
 
+# ---- M9：随包分发授权/文档/案例，并生成发布包内清单 ----
+DOCS="dist/trapdoor-lab/文档"
+mkdir -p "$DOCS"
+for f in \
+  "../LICENSE" "../THIRD_PARTY_NOTICES.md" "../授权说明.md" "../RELEASE.md" \
+  "../README.md" "../MANIFEST.sha256" \
+  "运行说明.md" "API说明.md" "参数手册.md" "验收报告.md" \
+  "验证基准说明.md" "图号映射表.md" "cases.py" "tests/test_cases.py"; do
+  [ -f "$f" ] && cp "$f" "$DOCS/" 2>/dev/null || true
+done
+
+# 发布包清单（源码文件 SHA-256 + 打包目录文件数）
+if [ -f "$DOCS/MANIFEST.sha256" ]; then
+  echo "源码校验清单已随包分发：文档/MANIFEST.sha256"
+fi
+
 echo
 echo "打包完成：dist/trapdoor-lab/"
 echo "启动脚本：dist/trapdoor-lab/启动打包版.sh"
+echo "随附文档：dist/trapdoor-lab/文档/（授权、许可证声明、发布说明、五份技术文档）"
 echo "注意：改了源码后需重新运行本脚本，打包版才会更新。"

@@ -38,7 +38,7 @@ def provenance(params, mode: str = "active") -> dict:
     modules = ["app.py", "collapse_kernel.py", "plots.py", "l2_shooting.py",
                "l3_rate.py", "gtt.py", "benchmarks.py", "collapse_anim.py",
                "fem2d.py", "fem_anim.py", "fela.py", "dem2d.py",
-               "dem_backend.py", "cone3d.py"]
+               "dem_backend.py", "cone3d.py", "cases.py"]
     digest = hashlib.sha256()
     for name in modules:
         path = os.path.join(HERE, name)
@@ -95,6 +95,8 @@ from fela import solve_fela, fela_figure_data
 from dem2d import solve_dem, selfcheck_dem, DEFAULT_DEM_PARAMS
 from dem_backend import run_backend, selfcheck_backend, make_request
 from cone3d import solve_cone, critical_depth, selfcheck_cone, DEFAULT_CONE_PARAMS
+from cases import (ENGINEERING_CASES, CASE_TEMPLATES, evaluate_case,
+                   evaluate_all, case_summary, selfcheck_cases)
 
 PORT = int(os.environ.get("TRAPDOOR_PORT", "8765"))
 
@@ -180,6 +182,7 @@ HTML = r"""<!DOCTYPE html>
     <button class="ghost" onclick="runFELA()">FELA 极限分析上下界夹逼</button>
     <button class="ghost" onclick="runDEM()">DEM 二维颗粒流（真接触求解）</button>
     <button class="ghost" onclick="runCone()">三维锥形极限平衡（三形态）</button>
+    <button class="ghost" onclick="runCases()">工程案例模板（专著第19章五案例）</button>
     <div style="margin:6px 0 2px"><label>ψ 剪胀角 (°，仅 Davis 折减，≤φ₀；留空=不折减)</label>
       <input id="fela_psi" type="number" step="any" value="10" style="width:90px"></div>
     <button class="ghost" onclick="toggleRate()">显示/隐藏 L3 参数</button>
@@ -312,6 +315,20 @@ HTML = r"""<!DOCTYPE html>
         <b>边界：</b>简化三维轴对称刚体滑体极限平衡，非三维 FEM/FELA/SOCP；
         三形态命名对齐专著，但轴对称推广为本程序扩展、非专著原有公式；
         c/φ/K 与 L1 幂型参数不同族，不做同一性对照。
+      </div>
+    </div>
+    <div id="casespane" style="display:none;margin-top:14px;border:1px solid var(--line);border-radius:6px;padding:12px">
+      <b>工程案例模板（方案 M9，专著第19章五案例）</b>
+      <div class="note" style="margin:6px 0">选择案例一键载入参数并复算 L_c / x₂ / h_cr（或顶起 q₁），与专著原书数值逐项核对。</div>
+      <label>选择案例</label>
+      <select id="caseSelect" onchange="showCaseInfo()" style="max-width:100%"><option value="">加载中…</option></select>
+      <div id="caseInfo" class="note" style="margin:8px 0;line-height:1.7"></div>
+      <button class="ghost" onclick="loadCaseParams()">载入该案例参数到上方输入框</button>
+      <button class="ghost" onclick="recalcCase()">复算并对照原书</button>
+      <div id="caseFig" style="margin-top:8px"></div>
+      <div class="note" style="margin-top:8px;color:#a00">
+        <b>边界：</b>五案例参数与数值来自专著第19章，均为<b>典型取值示例、非场地实测</b>；
+        以实测 ψ 反定 S_ψ 的解为工程近似、非严格界值；实际工程须按场地试验测定后代入。
       </div>
     </div>
     <div class="note" style="margin-top:14px">
@@ -485,6 +502,7 @@ function hidePlayer(){
   const fe=document.getElementById("felapane"); if(fe) fe.style.display="none";
   const dp=document.getElementById("dempane"); if(dp) dp.style.display="none";
   const cp=document.getElementById("conepane"); if(cp) cp.style.display="none";
+  const cs=document.getElementById("casespane"); if(cs) cs.style.display="none";
 }
 
 function zAtTime(t){
@@ -672,6 +690,114 @@ async function runCone(){
       '<figure><img src="data:image/png;base64,'+d.fig+'" alt="3D cone" style="width:100%">'+
       '<figcaption>左：三形态轴对称滑面剖面；右：主动支护压力量级对照（维度不同，不与 L1 判同一性）</figcaption></figure>';
   }catch(e){ document.getElementById("err").textContent="三维锥形求解失败："+e.message; }
+}
+
+// ===== 工程案例模板（方案 M9，专著第19章五案例）=====
+let CASES_INDEX = null;
+
+async function runCases(){
+  document.getElementById("err").textContent=""; hidePlayer();
+  const pane=document.getElementById("casespane"); pane.style.display="block";
+  const sel=document.getElementById("caseSelect");
+  const info=document.getElementById("caseInfo");
+  const fig=document.getElementById("caseFig");
+  sel.innerHTML='<option value="">加载中…</option>';
+  info.innerHTML="正在加载案例索引…"; fig.innerHTML="";
+  try{
+    const r=await fetch("/api/cases");
+    const d=await r.json();
+    if(d.error){ document.getElementById("err").textContent=d.error; return; }
+    CASES_INDEX=d;
+    sel.innerHTML=d.cases.map(c=>'<option value="'+c.id+'">'+c.name+'</option>').join("");
+    showCaseInfo();
+  }catch(e){ document.getElementById("err").textContent="案例加载失败："+e.message; }
+}
+
+function showCaseInfo(){
+  if(!CASES_INDEX) return;
+  const id=document.getElementById("caseSelect").value;
+  const c=CASES_INDEX.cases.find(x=>x.id===id);
+  if(!c) return;
+  const s=CASES_INDEX.summary;
+  const lines=[
+    "<b>"+c.name+"</b>",
+    "来源："+c.source,
+    "工况："+c.mode+"；形态："+c.morphology,
+    "情景："+c.scenario,
+    "判读："+c.judgement,
+    "警示："+c.caution,
+    "——",
+    "索引自检：案例 "+s.n_cases+" 个；复算全部吻合："+(s.all_comparison_ok?"是":"否")+
+      "；反验通过："+(s.selfcheck_ok?"是":"否"),
+    "主动瓮形地表宽/洞跨："+fmt(s.active_range[0],2)+"–"+fmt(s.active_range[1],2),
+    "关键提示："+s.key_warning
+  ];
+  document.getElementById("caseInfo").innerHTML=lines.join("<br>");
+}
+
+async function loadCaseParams(){
+  if(!CASES_INDEX){ document.getElementById("err").textContent="请先点击「工程案例模板」加载案例"; return; }
+  const id=document.getElementById("caseSelect").value;
+  if(!id){ document.getElementById("err").textContent="请先选择案例"; return; }
+  document.getElementById("err").textContent="";
+  try{
+    const r=await fetch("/api/case",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id:id})});
+    const d=await r.json();
+    if(d.error){ document.getElementById("err").textContent=d.error; return; }
+    const z=d.result, p=z.params;
+    KEYS.forEach(k=>{ if(p[k]!==undefined && p[k]!==null) document.getElementById(k).value=p[k]; });
+    const md=document.getElementById("mode");
+    if(Array.from(md.options).some(o=>o.value===z.case.mode)) md.value=z.case.mode;
+    const extra=[];
+    const psi=p.psi0_deg;
+    extra.push("主案例 ψ₀："+(psi===null||psi===undefined?"关联流动（无 ψ₀）":
+      fmt(psi,1)+"°（非关联，案例复算用；L1 主输入无此框）"));
+    z.variants.forEach(v=>{
+      const vp=v.params;
+      extra.push("变体「"+v.label+"」ψ₀："+(vp.psi0_deg===null||vp.psi0_deg===undefined?
+        "关联":fmt(vp.psi0_deg,1)+"°")+"；工况 "+v.mode);
+    });
+    document.getElementById("caseInfo").innerHTML+="<br><br><b>参数已载入上方输入框。</b><br>"+extra.join("<br>");
+  }catch(e){ document.getElementById("err").textContent="载入案例参数失败："+e.message; }
+}
+
+async function recalcCase(){
+  if(!CASES_INDEX){ document.getElementById("err").textContent="请先点击「工程案例模板」加载案例"; return; }
+  const id=document.getElementById("caseSelect").value;
+  if(!id){ document.getElementById("err").textContent="请先选择案例"; return; }
+  document.getElementById("err").textContent="";
+  const info=document.getElementById("caseInfo"), fig=document.getElementById("caseFig");
+  info.innerHTML="复算中…"; fig.innerHTML="";
+  try{
+    const r=await fetch("/api/case",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id:id})});
+    const d=await r.json();
+    if(d.error){ document.getElementById("err").textContent=d.error; return; }
+    const z=d.result, res=z.result;
+    const cmpRows=(title,comp)=>{
+      const ks=Object.keys(comp);
+      if(!ks.length) return [];
+      return ["<b>"+title+"</b>"].concat(ks.map(k=>{
+        const x=comp[k];
+        return k+"：复算 "+fmt(x.computed,4)+" / 原书 "+fmt(x.book,4)+
+          "；误差 "+fmt(x.abs_error,4)+"（"+(x.ok?"吻合":"偏差")+"）";
+      }));
+    };
+    const lines=["<b>"+z.case.name+"</b>；工况 "+z.case.mode+
+      "；复算与原书逐项对照："+(z.all_comparison_ok?"全部吻合":"存在偏差")];
+    lines.push.apply(lines,cmpRows("主案例",z.comparison));
+    z.variants.forEach(v=>lines.push.apply(lines,cmpRows("变体「"+v.label+"」",v.comparison)));
+    if(res.selfcheck_error!==null && res.selfcheck_error!==undefined)
+      lines.push("反验 L_c(h_cr)=l：误差 "+res.selfcheck_error.toExponential(2)+" m");
+    if(res.closure_inadmissible)
+      lines.push("闭合支判据：σ(x₂)="+fmt(res.closure_sigma_at_surface,3)+
+        " kPa < −σ_t，越界 "+fmt(res.closure_exceed_kPa,3)+" kPa → 不可容许（近井筒渐进）");
+    lines.push("边界："+z.boundary);
+    info.innerHTML=lines.join("<br>");
+    fig.innerHTML='<figure><img src="data:image/png;base64,'+d.fig+'" alt="case comparison" style="width:100%">'+
+      '<figcaption>复算值（蓝）vs 专著第19章原书值（灰）；变体按其标签前缀标注</figcaption></figure>';
+  }catch(e){ document.getElementById("err").textContent="案例复算失败："+e.message; }
 }
 
 // ===== FEM 应力场动态云图（方案 M5 / M6）=====
@@ -925,6 +1051,15 @@ class Handler(BaseHTTPRequestHandler):
                        "application/json; charset=utf-8")
         elif path == "/api/health":
             self._send(200, b'{"ok":true}', "application/json")
+        elif path == "/api/cases":
+            # 案例索引只读，前端下拉用 GET 拉取（复算仍走 POST /api/case）
+            self._json(dict(
+                cases=[{k: c[k] for k in ("id", "name", "source", "scenario",
+                                         "mode", "morphology", "judgement",
+                                         "caution")}
+                       for c in ENGINEERING_CASES],
+                summary=case_summary(),
+                selfcheck=selfcheck_cases()))
         elif path == "/api/bench2":
             self._json({"anchors": LITERATURE_ANCHORS,
                         "check": check_literature_anchors()})
@@ -940,7 +1075,8 @@ class Handler(BaseHTTPRequestHandler):
         if path not in ("/api/solve", "/api/l2", "/api/l3", "/api/gtt",
                         "/api/sat", "/api/mirror", "/api/anim", "/api/fem",
                         "/api/fem_anim", "/api/fela",
-                        "/api/dem", "/api/dem_backend", "/api/cone"):
+                        "/api/dem", "/api/dem_backend", "/api/cone",
+                        "/api/cases", "/api/case"):
             self._send(404, b"not found", "text/plain")
             return
         try:
@@ -997,6 +1133,22 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"results": results, "critical_depth": cr,
                             "selfcheck": selfcheck_cone(),
                             "fig": self._plot_cone(results)})
+            elif path == "/api/cases":
+                # 案例索引（模板元信息 + 横向汇总），前端下拉用
+                self._json(dict(
+                    cases=[{k: c[k] for k in ("id", "name", "source", "scenario",
+                                             "mode", "morphology", "judgement",
+                                             "caution")}
+                           for c in ENGINEERING_CASES],
+                    summary=case_summary(),
+                    selfcheck=selfcheck_cases()))
+            elif path == "/api/case":
+                cid = payload.get("id")
+                if cid not in CASE_TEMPLATES:
+                    self._json({"error": "未知案例 id：%r" % cid})
+                    return
+                r = evaluate_case(CASE_TEMPLATES[cid])
+                self._json({"result": r, "fig": self._plot_case(r)})
             elif path == "/api/fem_anim":
                 p = payload["params"]
                 fem_p = dict(DEFAULT_FEM_PARAMS)
@@ -1305,6 +1457,33 @@ class Handler(BaseHTTPRequestHandler):
         ax2.set_ylabel("support pressure q (kPa)")
         ax2.set_title("3D limit equilibrium (order-of-magnitude)")
         ax2.grid(alpha=0.3, axis="y")
+        fig.tight_layout()
+        return _fig_b64(fig)
+
+    @staticmethod
+    def _plot_case(r):
+        """工程案例：复算值 vs 专著原书值 对照条形图。"""
+        comp = dict(r["comparison"])
+        for v in r.get("variants", []):
+            for k, c in v["comparison"].items():
+                comp[v["label"] + "/" + k] = c
+        if not comp:
+            fig, ax = plt.subplots(figsize=(7, 3))
+            ax.text(0.5, 0.5, "no numeric comparison", ha="center")
+            return _fig_b64(fig)
+        keys = list(comp.keys())
+        book = [comp[k]["book"] for k in keys]
+        calc = [comp[k]["computed"] for k in keys]
+        x = np.arange(len(keys))
+        fig, ax = plt.subplots(figsize=(max(9, len(keys) * 1.1), 4))
+        ax.bar(x - 0.19, book, 0.38, label="book (monograph ch.19)", color="#9fb6cd")
+        ax.bar(x + 0.19, calc, 0.38, label="recomputed", color="#1f6fb5")
+        ax.set_xticks(x)
+        ax.set_xticklabels(keys, rotation=35, ha="right", fontsize=8)
+        ax.set_ylabel("value")
+        ax.set_title("Engineering case: recomputed vs monograph values")
+        ax.legend(fontsize=8)
+        ax.grid(alpha=0.3, axis="y")
         fig.tight_layout()
         return _fig_b64(fig)
 

@@ -41,6 +41,7 @@ bash 一键启动.sh
 | FELA | FELA 极限分析上下界夹逼 | 线性化屈服面 + 对偶线性规划：内接多面体给静力下限、外接给运动上限；主动支护压力夹逼并包住 L1 闭式解，Davis 折减独立报告（方案 M7）；样本 `trapdoor_lab/verify/fela_bracket.png` |
 | DEM | DEM 二维颗粒流（真接触求解） | Cundall–Strack 线性接触 + Coulomb 摩擦，逐颗粒牛顿积分；活门开闭、颗粒流出、地表漏斗，四阶段速度着色图（方案 M8）；样本 `trapdoor_lab/verify/dem_preview.png` |
 | 3D | 三维锥形极限平衡 | 轴对称漏斗/瓮形/井筒三形态滑体，自重与侧阻积分、临界埋深；与 L1 二维解只作量级对照（方案 M8 配套） |
+| 案例 | 工程案例模板（专著第19章五案例） | 五案例一键载入参数并复算 L_c / x₂ / h_cr 或顶起 q₁，与专著原书数值逐项对照；案例一含硬塑黏土 A / 松散粉砂 B 两变体（方案 M9） |
 | 动态 | 参数扫描动态图件 | h / A / B / σ_t 逐帧重算，直接观察 h 跨 h_cr 时结论翻转 |
 | 报告 | 导出计算报告 (HTML) | 输入、结果、六图、Table 3/4、可复现性元数据一并导出 |
 
@@ -50,8 +51,8 @@ bash 一键启动.sh
 
 ```bash
 cd trapdoor_lab
-../venv/bin/python -m unittest discover -s tests   # 128 项回归（含 23 FEM + 13 FELA + 24 DEM/3D）
-../venv/bin/python 自检.py                          # 13 项基准自检
+../venv/bin/python -m unittest discover -s tests   # 146 项回归（含 23 FEM + 13 FELA + 24 DEM/3D + 18 案例）
+../venv/bin/python 自检.py                          # 14 项基准自检
 ```
 
 `.github/workflows/test.yml` 在每次 push/PR 上跑全量单测、自检与编译检查。
@@ -61,7 +62,7 @@ cd trapdoor_lab
 
 - `trapdoor_lab/运行说明.md` — 小白操作步骤
 - `trapdoor_lab/参数手册.md` — 参数符号、单位、范围、预设
-- `trapdoor_lab/API说明.md` — 全部接口与返回字段（含 `/api/fem`）
+- `trapdoor_lab/API说明.md` — 全部接口与返回字段（含 `/api/fem`、`/api/cases`、`/api/case`）
 - `trapdoor_lab/验证基准说明.md` — 基准分级、容差、理论张力
 - `trapdoor_lab/图号映射表.md` — 代码图 / 论文图 / 专著图三级对照
 - `trapdoor_lab/验收报告.md` — 实跑结果与边界记录
@@ -98,13 +99,26 @@ cd trapdoor_lab
   不链接、不分发），当前程序包只含自实现的 MIT 参考后端。
 - 「三维锥形极限平衡」是轴对称刚体滑体 + 侧摩阻积分，三形态命名对齐专著，但轴对称
   推广为本程序扩展、非专著原有公式；不是三维 FEM/FELA/SOCP，与 L1 二维解只作量级对照。
+- 「工程案例模板」的五案例参数与数值来自专著第 19 章，**均为典型取值示例、非场地实测**；
+  以实测 ψ 反定 S_ψ 的解是工程近似、非严格界值；实际工程须按第 10 章场地试验测定后代入，
+  不得直接套用模板。案例一粉砂变体 ψ<0，闭合支按式(19.6) 越界 7.67 kPa 判为不可容许，
+  程序取 ψ→0 同时性极限为下限、不虚构渐进上包络；顶起案例恒贯通、不设 h_cr。
 - 未实现：完整 FELA SOCP 圆锥规划、Yade/PFC 外部 DEM 求解器本身（仅定义接入协议）、
-  三维 FEM/FELA、局部坍塌形态数据。
+  三维 FEM/FELA、μ(I) 细观反算、局部坍塌形态数据。
 
 ## 安全
 
 对话中曾明文出现的 GitHub 密码与令牌均已暴露，应到 GitHub 网页撤销并改用 SSH key。
 不要把凭据写入仓库、配置文件或对话。
+
+## 授权与许可
+
+- 主程序采用 [MIT License](LICENSE)（Copyright © 2026 sohappy4）；
+- 第三方依赖许可证与边界见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；
+- 科研使用标准、理论扩展授权边界、商用前法务梳理清单见 [授权说明.md](授权说明.md)；
+- DEM 外部后端（Yade GPL / PFC 商业）仅以独立进程 JSON 协议接入，
+  **不链接、不随包分发**；发布包只含自实现 MIT 参考后端。
+- 版本与构建清单见 [RELEASE.md](RELEASE.md) 与 `MANIFEST.sha256`。
 
 ## 引用
 

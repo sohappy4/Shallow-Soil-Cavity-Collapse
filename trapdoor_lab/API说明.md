@@ -11,10 +11,16 @@
 | `/api/health` | 存活探测 | `{"ok":true}` |
 | `/api/tables` | 论文 Table 3 / Table 4 复现数据 | `{"table3":{...},"table4":{...}}` |
 | `/api/bench2` | 二期文献基准集（1g / 离心机 / 速率适用域） | `{"anchors":{...},"check":{...}}` |
+| `/api/cases` | 工程案例索引（五案例元信息 + 汇总 + 自检） | `{"cases":[...],"summary":{...},"selfcheck":{...}}` |
 
 `/api/bench2` 无需请求体，返回三组共 19 项文献锚点（`anchors`）及其机械自洽核验
 （`check`，含 `all_pass`、`checks`、`counts`、`beta_half_span_pct`）。
 数据逐条摘自专著，`note` 明确「文献报告值，程序不拟合、不推导」。
+
+`/api/cases` 无需请求体，供前端下拉框一次性拉取。`cases[]` 每项含
+`id/name/source/scenario/mode/morphology/judgement/caution`（不含参数，参数在 `/api/case` 中）；
+`summary` 含 `n_cases`、`all_comparison_ok`、`selfcheck_ok`、`width_over_span`、
+`active_range`、`key_warning`、`caveat`；`selfcheck` 为 `selfcheck_cases()` 的逐项布尔结果。
 
 ## 二、POST 接口
 
@@ -213,6 +219,25 @@ POST，请求：`{"params":{"l":2.5,"h":3.0,"phi_deg":25,"c":10,"theta_deg":20,"
 **边界**：简化三维轴对称刚体滑体极限平衡，非三维 FEM/FELA/SOCP；三形态命名对齐专著，
 但轴对称推广为本程序扩展、非专著原有公式；与 L1 二维解只作量级对照，不判同一性。
 
+### 5i. `/api/case` —— 工程案例复算（方案 M9）
+
+POST，请求：`{"id":"karst-cavity"}`。合法 id 为
+`karst-cavity`、`urban-road`、`goaf`、`shield-tunnel`、`tunnel-uplift`。
+响应：
+- `result.case`：案例元信息（id/name/source/scenario/mode/morphology/judgement/caution）；
+- `result.params`：模板参数（含 `psi0_deg`；主动/渐进为非关联角，顶起为 null）；
+- `result.result`：复算结果。主动含 `Omega/A_psi/S_psi/p/L_c/x2/h_cr/surface_width/
+  global_collapse/branch_valid/selfcheck_Lc_at_hcr/selfcheck_error/
+  nonassociated_reduction`；顶起含 `S/p/Delta/x2/q1/h_cr=null`；
+  渐进含 `closure_sigma_at_surface/closure_exceed_kPa/closure_inadmissible`；
+- `result.comparison`：逐键对照，每项 `{computed,book,abs_error,rel_error,ok}`；
+- `result.variants`：案例一 A/B 变体，同结构；`result.all_comparison_ok` 为总判定；
+- `result.boundary`：适用边界文字；`fig`：复算值 vs 原书值对照条形图（base64 PNG）。
+
+复算公式：式(16.32) `A_ψ`、式(16.33) `S_ψ`、式(16.19a) `L_c`、式(19.1) `h_cr`、
+式(19.12)–(19.14) 顶起；每次主动复算强制反验 `L_c(h_cr)=l`。
+**边界**：五案例参数均为专著典型示例、非场地实测；以实测 ψ 反定 S_ψ 为工程近似、非严格界值。
+
 ### 6. `/api/sat` —— 文献饱和高度锚点
 
 请求 `{"params": {同 /api/solve}}`。
@@ -233,6 +258,9 @@ POST，请求：`{"params":{"l":2.5,"h":3.0,"phi_deg":25,"c":10,"theta_deg":20,"
 
 ```bash
 curl -s http://127.0.0.1:8765/api/health
+curl -s http://127.0.0.1:8765/api/cases
+curl -s -X POST http://127.0.0.1:8765/api/case \
+  -H 'Content-Type: application/json' -d '{"id":"karst-cavity"}'
 curl -s -X POST http://127.0.0.1:8765/api/solve \
   -H 'Content-Type: application/json' \
   -d '{"params":{"sigma_c":100,"A":0.6,"B":0.6,"sigma_t":5,"gamma":18,"q2":10,"l":2.5,"h":3},"mode":"active"}'
