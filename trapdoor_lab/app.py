@@ -89,6 +89,7 @@ from benchmarks import (
 )
 from collapse_anim import build_animation
 from fem2d import solve_fem, DEFAULT_FEM_PARAMS, selfcheck_dp
+from fem_anim import build_fem_animation
 
 PORT = int(os.environ.get("TRAPDOOR_PORT", "8765"))
 
@@ -170,6 +171,7 @@ HTML = r"""<!DOCTYPE html>
     <button class="ghost" onclick="runL3()">L3 速率时间线</button>
     <button class="ghost" onclick="runCollapseAnim()">二维坍塌过程动画</button>
     <button class="ghost" onclick="runFEM()">FEM 二维力学场（应力/塑性区）</button>
+    <button class="ghost" onclick="runFEMAnim()">FEM 应力场动态云图</button>
     <button class="ghost" onclick="toggleRate()">显示/隐藏 L3 参数</button>
     <div id="rateparams" style="display:block;margin-top:8px">
       <label>B_c 烟囱宽度 (m)</label><input id="rate_Bc" type="number" step="any" value="1.0">
@@ -244,6 +246,18 @@ HTML = r"""<!DOCTYPE html>
         小变形理想弹塑性、网格较粗，属定性—半定量扩展。L1/L2/L3 仍为专著理论主结果。
       </div>
     </div>
+    <div id="femanimpane" style="display:none;margin-top:14px;border:1px solid var(--line);border-radius:6px;padding:12px">
+      <b>FEM 应力场动态云图（逐位移步，方案 M5）</b>
+      <div class="note" style="margin:6px 0">全场统一色标，可直接比较各步；左为偏应力 q<sub>dev</sub>，右为塑性区扩展。</div>
+      <div id="femGif" style="margin:8px 0"></div>
+      <input id="femAnimSlider" type="range" min="0" max="1000" value="0" oninput="drawFEMFrame()" style="padding:0;width:100%">
+      <div id="femFrameImg" style="margin-top:8px"></div>
+      <div id="femFrameInfo" class="note" style="margin-top:6px;line-height:1.7"></div>
+      <div class="note" style="margin-top:8px;color:#a00">
+        <b>边界：</b>这是 FEM 数值场（非运动学演示），但仍是定性—半定量扩展：DP 圆化 ≠ 幂型 Hoek–Brown，
+        小变形理想弹塑性，非严格 FELA 上下界。GIF 为同一组帧的自动播放版本（方案 M6 演示视频最小实现）。
+      </div>
+    </div>
     <div class="note" style="margin-top:14px">
       注：埋深比 n = h/(2l) = h/D（洞全宽 D=2l）；q1a/q1b 为程序输出，非输入。
       B=1 自动切换线性极限分支（h_cr = l/A），不与闭式解比较。
@@ -261,6 +275,7 @@ const PRESETS = __PRESETS__;
 const DEFAULT = __DEFAULT__;
 let LAST = null, LAST_L3 = null, PLAY_TIMER = null;
 let LAST_ANIM = null, ANIM_TIMER = null;
+let LAST_FEM_ANIM = null;
 let SCAN = {timer:null, i:0, busy:false};
 
 function fill(p){ KEYS.forEach(k=>document.getElementById(k).value = p[k]); }
@@ -410,6 +425,7 @@ function hidePlayer(){
   const e=document.getElementById("player"); if(e) e.style.display="none";
   const a=document.getElementById("animpane"); if(a) a.style.display="none";
   const fem=document.getElementById("fempane"); if(fem) fem.style.display="none";
+  const fa=document.getElementById("femanimpane"); if(fa) fa.style.display="none";
 }
 
 function zAtTime(t){
@@ -491,6 +507,45 @@ async function runFEM(){
       '<figure><img src="data:image/png;base64,'+d.fig+'" alt="FEM" style="width:100%">'+
       '<figcaption>左：偏应力 q 云图；中：塑性区（红=屈服单元）；右：活门压力—位移曲线（虚线=初始静止压力）</figcaption></figure>';
   }catch(e){ document.getElementById("err").textContent="FEM 求解失败："+e.message; }
+}
+
+// ===== FEM 应力场动态云图（方案 M5 / M6）=====
+async function runFEMAnim(){
+  document.getElementById("err").textContent=""; hidePlayer();
+  let params; try{ params=read(); }
+  catch(e){ document.getElementById("err").textContent=e.message; return; }
+  const pane=document.getElementById("femanimpane");
+  pane.style.display="block";
+  document.getElementById("femGif").innerHTML="";
+  document.getElementById("femFrameImg").innerHTML='<div class="note">正在逐帧求解应力场，约需十余秒…</div>';
+  document.getElementById("femFrameInfo").innerHTML="";
+  try{
+    const r=await fetch("/api/fem_anim",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({params:params})});
+    const d=await r.json();
+    if(d.error){ document.getElementById("err").textContent=d.error; return; }
+    LAST_FEM_ANIM=d;
+    document.getElementById("femGif").innerHTML=
+      '<img src="data:image/gif;base64,'+d.result.gif+'" alt="FEM 动态云图" style="width:100%;max-width:900px">';
+    document.getElementById("femAnimSlider").value=0;
+    drawFEMFrame();
+  }catch(e){ document.getElementById("err").textContent="动态云图失败："+e.message; }
+}
+
+function drawFEMFrame(){
+  if(!LAST_FEM_ANIM) return;
+  const A=LAST_FEM_ANIM, fr=A.result.frames, cv=A.curve;
+  const n=fr.length;
+  const i=Math.max(0,Math.min(n-1,
+    Math.round(parseFloat(document.getElementById("femAnimSlider").value)/1000*(n-1))));
+  document.getElementById("femFrameImg").innerHTML=
+    '<img src="data:image/png;base64,'+fr[i]+'" alt="frame '+i+'" style="width:100%;max-width:900px">';
+  const c=cv[i];
+  document.getElementById("femFrameInfo").innerHTML=
+    "帧 "+i+" / "+(n-1)+"<br>活门下移 "+fmt(c.door_down,3)+" m<br>"+
+    "活门压力 "+fmt(c.q_kPa,2)+" kPa<br>塑性区占比 "+fmt(100*c.plastic_frac,1)+"%<br>"+
+    "本步迭代 "+c.iters+" 次，残差 "+c.residual.toExponential(2)+"<br>"+
+    "峰值压力 "+fmt(A.peak_q_kPa,2)+" kPa，收敛："+(A.converged?"是":"否");
 }
 
 // ===== 二维坍塌过程动画（运动学演示）=====
@@ -718,7 +773,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         if path not in ("/api/solve", "/api/l2", "/api/l3", "/api/gtt",
-                        "/api/sat", "/api/mirror", "/api/anim", "/api/fem"):
+                        "/api/sat", "/api/mirror", "/api/anim", "/api/fem",
+                        "/api/fem_anim"):
             self._send(404, b"not found", "text/plain")
             return
         try:
@@ -740,6 +796,25 @@ class Handler(BaseHTTPRequestHandler):
                                        opts={"passive": passive,
                                              "n_frames": int(payload.get("n_frames", 48))})
                 self._json({"result": anim})
+            elif path == "/api/fem_anim":
+                p = payload["params"]
+                fem_p = dict(DEFAULT_FEM_PARAMS)
+                fem_p.update({k: v for k, v in
+                              payload.get("fem_params", {}).items() if k in fem_p})
+                fem_p["gamma"] = float(p.get("gamma", fem_p["gamma"]))
+                fem_p["sigma_v0"] = float(p.get("q2", fem_p["sigma_v0"]))
+                fem_p["l"] = float(p["l"])
+                fem_p["h"] = float(p["h"])
+                opts = dict(payload.get("opts", {}))
+                opts.setdefault("nx", 8)
+                opts.setdefault("ny", 6)
+                opts.setdefault("n_steps", 8)
+                r = solve_fem(fem_p, opts=opts)
+                anim = build_fem_animation(r, payload.get("anim_opts"))
+                self._json({"result": anim,
+                            "curve": r["curve"],
+                            "peak_q_kPa": r["peak_q_kPa"],
+                            "converged": r["meta"]["converged"]})
             elif path == "/api/fem":
                 p = payload["params"]
                 fem_p = dict(DEFAULT_FEM_PARAMS)

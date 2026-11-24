@@ -406,12 +406,29 @@ def solve_fem(params: Dict[str, float], opts: Dict[str, Any] = None) -> Dict[str
             F[gp_dofs[e]] += fe
         return F
 
+    def cell_fields(sig, ep):
+        """把高斯点场聚合成单元中心场，全部转 Python 标量便于 JSON 序列化。"""
+        cs = np.mean(sig, axis=1)
+        ce = np.mean(ep, axis=1)
+        qq = []
+        for s in cs:
+            pp = (s[0] + s[1] + s[2]) / 3.0
+            j2 = 0.5 * ((s[0]-pp)**2 + (s[1]-pp)**2 + (s[2]-pp)**2) + s[3]**2
+            qq.append(math.sqrt(3.0 * max(j2, 0.0)))
+        yd = ce > 1e-8
+        return dict(q=[float(v) for v in qq],
+                    epsp=[float(v) for v in ce],
+                    yielded=[bool(v) for v in yd],
+                    plastic_frac=float(np.mean(yd)))
+
     # step0：未扰动初始反力（静止土压力对照点）
     Fint0 = internal_force(sig_gp)
     reaction0 = float(np.sum(Fint0[door_dofs] - Fbody[door_dofs]))
     curve.append(dict(step=0, door_down=0.0, reaction_kN=reaction0,
                       q_kPa=reaction0 / D, plastic_frac=0.0,
                       iters=0, residual=0.0))
+    field_history = [dict(step=0, door_down=0.0,
+                          **cell_fields(sig_gp, epsp_cum))]
 
     for step in range(1, n_steps + 1):
         target = -du * step                       # y 向上，向下位移为负
@@ -459,6 +476,8 @@ def solve_fem(params: Dict[str, float], opts: Dict[str, Any] = None) -> Dict[str
                           q_kPa=float(q_door),
                           plastic_frac=float(np.mean(epsp_cum > 1e-8)),
                           iters=int(it + 1), residual=float(unorm)))
+        field_history.append(dict(step=step, door_down=float(du * step),
+                                  **cell_fields(sig_gp, epsp_cum)))
 
     # 峰值荷载与最终场
     qs = [p["q_kPa"] for p in curve]
@@ -489,6 +508,7 @@ def solve_fem(params: Dict[str, float], opts: Dict[str, Any] = None) -> Dict[str
         params=dict(E=E, nu=nu, c=c, phi_deg=phi_deg, psi_deg=psi_deg,
                     gamma=gamma, l=l, h=h, D=D, door_total=door_total),
         curve=curve, peak_q_kPa=float(peak), peak_step=peak_step,
+        field_history=field_history,
         field=dict(
             centers=cell_centers.tolist(),
             sxx=cell_sig[:, 0].tolist(), syy=cell_sig[:, 1].tolist(),

@@ -123,6 +123,24 @@
 小变形理想弹塑性、网格较粗，定性—半定量演示。截面位移步内以弹性刚度修正 Newton
 （默认松弛 0.4、容差 1e-3），`converged` 为工程收敛标志，非严格数学收敛证明。
 
+### 5d. `/api/fem_anim` —— FEM 应力场动态云图
+
+请求与 `/api/fem` 相同；`opts` 默认 `nx=8, ny=6, n_steps=8`，
+另可传 `anim_opts`（如 `{"fps":4}`）。
+
+响应：
+- `result.frames`：逐帧 PNG 的 base64 列表，长度 `n_steps+1`（步 0…n_steps）；
+- `result.gif`：同组帧生成的 GIF 动图（base64），自动循环播放；
+- `result.meta`：`n_frames`、`fps`、`qmax`（全场统一色标上限，避免帧间漂移）、
+  `boundary`、`note`；
+- `curve`、`peak_q_kPa`、`converged`：对应 FEM 求解的压力—位移曲线与工程收敛标志。
+
+每帧两面板：左为偏应力 `q_dev` 云图（全场统一色标），右为塑性区（红=屈服单元），
+标题给出步号、活门下移量、门压 `p_door`。前端用滑块逐帧查看，GIF 供自动播放。
+
+**边界**：底层是 FEM 数值场（非运动学演示），但仍是定性—半定量扩展：
+DP 圆化、小变形理想弹塑性、非严格 FELA 上下界。
+
 ### 6. `/api/sat` —— 文献饱和高度锚点
 
 请求 `{"params": {同 /api/solve}}`。
