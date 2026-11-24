@@ -1,85 +1,87 @@
 # Shallow-Soil-Cavity-Collapse
 
-浅埋土洞坍塌机理的统一变分极限分析理论配套计算程序。
-基于论文 *"A unified variational limit-analysis theory for active collapse and
-passive uplift of shallow soil cavities"* (Haipeng Sun)。
+浅埋土洞活门试验数值模拟程序。理论依据：专著《浅埋土洞坍塌：形态、临界埋深与统一变分理论》及论文
+*"A unified variational limit-analysis theory for active collapse and passive uplift of shallow soil cavities"*（孙海朋）。
 
-在一个无需预设滑动面的统一变分框架内，闭式求解浅埋土洞的两种破坏模式
-——主动坍塌 (active collapse) 与被动隆起 (passive uplift)——
-给出滑动面形态、滑动面应力场、临界覆盖厚度、极限荷载、
-剪胀角随深度的演化、侧压力系数演化，以及非关联剪胀修正，
-并自动复现论文 Table 3 / Table 4 的试验对比。
+程序把「静力层—极限分析层—速率过程层」三层理论产品化：
+主动塌落（瓮形）与被动顶起（漏斗形）互为镜像，剪胀角控制形态，临界埋深 `h_cr` 控制是否贯通至地表。
 
-## 功能一键概览
+## 快速启动
 
-运行脚本后：
+银河麒麟 V10 SP1 / aarch64 已验证。
 
-* 终端打印核心闭式解：强度组合参数 S、出露坡度参数 t、脆性比 Ω、
-  覆强比 Λ、地表/底部剪胀角 ψ0 与 ψ(h)、临界覆盖厚度 h_cr、
-  主动支护压力 q1a、被动顶起压力 q1b，以及镜面对称校验
-  (q1b − q1a = 2·R_a/l)。
-* 自动生成 6 张图：
-
-| 文件 | 内容 | 对应论文 |
-|------|------|----------|
-| fig1_slip_surface.png | 滑动面形态（主动 urn / 被动 funnel） | Fig.1, Eq.25 |
-| fig2_stress_field.png | 滑动面应力场 σ、τ 随深度 | Fig.4(a), Eq.28/29 |
-| fig3_dilatancy.png    | 剪胀角 ψ 随深度衰减 | Fig.4(b), Eq.30 |
-| fig4_zoning.png       | 四形态分区图（Ω–ψ0 平面） | Fig.5 / Table 2, Eq.38 |
-| fig5_Ka_depth.png     | 侧压力系数 Ka(z) 随深度演化 | Fig.6, Eq.44 |
-| fig6_nonassociated.png| 非关联修正 Aψ/A–ψ0 | Fig.7(a), Eq.46 |
-
-* 终端自动复现 Table 3（主动试验 Chen et al., 2019）与
-  Table 4（被动试验 Rui et al., 2025b），打印预测值与偏差。
-
-## 环境配置
+**方式一（推荐，源码版）**：双击桌面上的 **活门试验模拟程序** 图标；
+或在本目录执行：
 
 ```bash
-# 创建并激活虚拟环境
-python3 -m venv venv
-source venv/bin/activate
-
-# 安装依赖
-pip install -r requirements.txt
+cd trapdoor_lab
+bash 一键启动.sh
 ```
 
-> 若创建虚拟环境时报 `ensurepip is not available`，先执行
-> `sudo apt install python3-venv python3-pip -y` 再重试。
+浏览器自动打开 `http://127.0.0.1:8765`。若该端口被占用，程序自动顺延到 8766、8767…
+并以终端打印的地址为准。关闭时按 `Ctrl+C`。
 
-## 运行
+**方式二（独立打包版，不需 Python）**：
+双击 `trapdoor_lab/dist/trapdoor-lab/启动打包版.sh`。约 157 MB，可整体拷到同为 aarch64 的机器。
+脚本会自动探测实际端口并打印浏览器地址。
+
+## 功能
+
+| 层 | 界面按钮 | 内容 |
+| --- | --- | --- |
+| L1 | 开始计算 | 准静态闭式解：S、t、Ω、Λ、ψ₀、ψ(h)、h_cr、q1a/q1b；六张图；Table 3/4 复现 |
+| L2 | L2 打靶求滑动面 | 专著算法 17.1：RK4 + 二分打靶，三级筛选，与闭式解对照 |
+| L3 | L3 速率时间线 | 式 (18.1)–(18.7)：Beverloo 出流、v、T、R、μ(I)、五阶段；带时间线播放器 |
+| GTT | GTT 切点 / 表13.2 / 定理13.2 | 广义切线法：切线参数、包线夹逼、切点扫描；原表舍入差显式标注 |
+| 锚点 | 文献锚点 h_sat / h_cr | N_sat=18.2212、h_sat/D=4.555 自洽核验与门槛区分 |
+| 对照 | 主动/被动镜像对照 | 主动滑面关于 x=l 镜像后与被动逐点比对 |
+| 动态 | 参数扫描动态图件 | h / A / B / σ_t 逐帧重算，直接观察 h 跨 h_cr 时结论翻转 |
+| 报告 | 导出计算报告 (HTML) | 输入、结果、六图、Table 3/4、可复现性元数据一并导出 |
+
+每次 `/api/solve` 返回参数快照、git commit、代码 sha256、依赖版本、时间戳，随报告导出。
+
+## 验证
 
 ```bash
-python3 cavity_collapse_calculator.py
+cd trapdoor_lab
+../venv/bin/python -m unittest discover -s tests   # 49 项回归
+../venv/bin/python 自检.py                          # 12 项基准自检
 ```
 
-脚本所在目录会生成 fig1~fig6 共 6 张 png。
+`.github/workflows/test.yml` 在每次 push/PR 上跑全量单测、自检与编译检查。
+冻结基准在 `tests/golden_baseline.json`，由 `verify/make_golden.py` 实跑生成，测试只读不改。
 
-## 换工况 / 改参数
+## 文档
 
-只改脚本顶部 `PARAMS` 这一块即可，其余一行都不用动（单位已注释）：
+- `trapdoor_lab/运行说明.md` — 小白操作步骤
+- `trapdoor_lab/参数手册.md` — 参数符号、单位、范围、预设
+- `trapdoor_lab/API说明.md` — 六个接口与返回字段
+- `trapdoor_lab/验证基准说明.md` — 基准分级、容差、理论张力
+- `trapdoor_lab/图号映射表.md` — 代码图 / 论文图 / 专著图三级对照
+- `trapdoor_lab/验收报告.md` — 实跑结果与边界记录
 
-```python
-PARAMS = dict(
-    sigma_c = 100.0,   # 强度参考应力 (kPa)
-    A       = 0.6,     # 幂型强度准则系数
-    B       = 0.6,     # 幂型强度准则指数 (0<B<=1, B=1 退化为 Mohr-Coulomb)
-    sigma_t = 5.0,     # 抗拉强度 (kPa)
-    gamma   = 18.0,    # 土体重度 (kN/m^3)
-    q2      = 10.0,    # 地表均布超载 (kPa)
-    l       = 2.5,     # 洞体半宽 (m)
-    h       = 3.0,     # 覆盖层厚度 (m)
-)
-```
+## 环境
 
-默认参数即论文 Fig.4 基准算例，可用于自检：地表剪胀角应约 37.6°、
-底部约 22.7°，镜面对称校验误差为 0。
+依赖：Python 3.8+，numpy、scipy、matplotlib（见 `requirements.txt`）。
+本机 aarch64 无 PySide6/PyQt5 预编译包，因此界面采用 Python 标准库 `http.server` + 浏览器，
+零 GUI 框架依赖。重新打包见 `trapdoor_lab/build.sh`。
 
-## 适用范围
+## 理论边界（必读）
 
-平面应变、准静态、沿单一连续剪切带破坏的剪胀或等容材料；
-主动模式额外要求 h ≤ h_cr。所有极限解为运动学上限，
-关联流动下为严格上界，非关联修正后为近似值。
+- `n = h/(2l) = h/D`，不是 `h/l`；`q1a`/`q1b` 是输出，不是输入；B=1 走线性极限分支。
+- `h_sat`（力学饱和，拱效应层）与 `h_cr`（几何贯通，上限法）是两个门槛，不可混用。
+- L3 演示锚点对应 h/D=6，但专著写适用域 h/D≤1.4；程序按公式如实算并标记 `rate-degraded`。
+- GTT 只给切线层与固定机构上的**耗散积分夹逼**；专著未给 Q^UB(σ₀) 机构荷载表达式，
+  程序不虚构严格荷载上界，也不冒充 FELA 上下界。
+- L1 闭式解只有沿滑面的一维场，「参数扫描动态图件」不是二维应力云图；
+  二维云图需 FELA/有限元层，未实现。
+- 未实现：完整 FELA SOCP、DEM 后端、三维锥形求解器、局部坍塌形态数据。
+
+## 安全
+
+对话中曾明文出现的 GitHub 密码与令牌均已暴露，应到 GitHub 网页撤销并改用 SSH key。
+不要把凭据写入仓库、配置文件或对话。
 
 ## 引用
 
-如本项目对你的研究有帮助，请引用原论文。
+如本项目对你的研究有帮助，请引用孙海朋的相关论文与专著。
