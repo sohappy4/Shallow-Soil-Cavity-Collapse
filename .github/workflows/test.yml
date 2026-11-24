@@ -1,0 +1,33 @@
+name: trapdoor-lab regression
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
+      - name: Install pinned dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy==1.24.4 scipy==1.10.1 matplotlib==3.7.5
+
+      - name: Run full unittest suite (incl. frozen golden JSON)
+        working-directory: trapdoor_lab
+        run: python -m unittest discover -s tests -v
+
+      - name: Run command-line self-check
+        working-directory: trapdoor_lab
+        run: python 自检.py
+
+      - name: Compile all modules
+        working-directory: trapdoor_lab
+        run: python -m py_compile app.py collapse_kernel.py plots.py l2_shooting.py l3_rate.py gtt.py benchmarks.py

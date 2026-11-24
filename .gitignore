@@ -221,3 +221,29 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# 忽略未发表的论文及手稿（防泄露）
+*.docx
+*.pdf
+草稿/
+papers/
+
+# 忽略小程序运行自动生成的结果图
+temp_images/
+*.tmp.png
+shpUnifiedVariationalTheory.pdf
+
+# 项目本地数据 / 临时目录 / 大附件（不入库）
+.workbuddy/
+.pip_tmp/
+.Trash-0/
+dist_new*/
+build_new*/
+*.zip
+*.rar
+*.tar.gz
+/fig[0-9]*.png
+
+# 未发表手稿的文本版同样不得入库（原规则只挡了 docx/pdf）
+*送审版*.md
+*JRMGE*.md
+*草稿*.md

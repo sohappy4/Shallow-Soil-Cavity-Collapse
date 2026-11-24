@@ -1,0 +1,6 @@
+numpy>=1.21
+scipy>=1.9
+matplotlib>=3.4
+# 说明：本程序不需要 PySide6 / PyQt5 / VTK / Flask。
+# 银河麒麟 V10 SP1 为 aarch64 架构，上述 Qt 库无官方预编译包，故采用 Python 标准库 Web 服务 + 浏览器界面。
+# 运行环境：Python 3.8+（已验证 venv Python 3.8.10 / numpy 1.24.4 / matplotlib 3.7.5）

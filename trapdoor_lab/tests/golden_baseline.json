@@ -1,0 +1,87 @@
+{
+  "_meta": {
+    "purpose": "一期/二期冻结基准；由 verify/make_golden.py 实跑生成，勿手工编辑",
+    "params": {
+      "sigma_c": 100.0,
+      "A": 0.6,
+      "B": 0.6,
+      "sigma_t": 5.0,
+      "gamma": 18.0,
+      "q2": 10.0,
+      "l": 2.5,
+      "h": 3.0
+    },
+    "generated_by": "trapdoor_lab/verify/make_golden.py"
+  },
+  "baseline": {
+    "psi0_deg": {
+      "value": 37.556437363999486,
+      "tol": 0.01
+    },
+    "psi_h_deg": {
+      "value": 22.665526638239637,
+      "tol": 0.01
+    },
+    "n": {
+      "value": 0.6,
+      "tol": 1e-12
+    },
+    "h_cr_m": {
+      "value": 5.388984093019808,
+      "tol": 0.01
+    },
+    "mirror_error": {
+      "value": 0.0,
+      "tol": 1e-10
+    },
+    "q1_diff": {
+      "value": 84.03719951333741,
+      "tol": 0.01,
+      "note": "应等于 2*Ra/l"
+    },
+    "b1_h_cr_m": {
+      "value": 4.166666666666667,
+      "tol": 1e-09,
+      "note": "线性极限 h_cr=l/A，不与 L1 闭式解比"
+    },
+    "table3_assoc_dev_pct": {
+      "value": -18.1285329153257,
+      "tol": 0.1
+    },
+    "table3_non_dev_pct": {
+      "value": 16.921882193447036,
+      "tol": 0.1
+    },
+    "table4_assoc_mean_dev_pct": {
+      "value": 25.412354606840815,
+      "tol": 0.1
+    },
+    "table4_non_mean_dev_pct": {
+      "value": -9.457752246384963,
+      "tol": 0.1
+    },
+    "l2_Lc_m": {
+      "value": 1.600107421330004,
+      "tol": 1e-08,
+      "note": "L2 打靶与闭式解相对误差基准 6.9e-12"
+    },
+    "gtt_sigma0_opt_kPa": {
+      "value": 37.59246836797791,
+      "tol": 0.01,
+      "note": "定理13.2：应等于滑面正应力加权均值"
+    },
+    "gtt_D_true": {
+      "value": 120.3879521243279,
+      "tol": 0.01
+    },
+    "sat_N_sat": {
+      "value": 18.2212,
+      "tol": 1e-09,
+      "note": "文献常数，非本程序推导"
+    },
+    "sat_h_sat_over_D": {
+      "value": 4.5553,
+      "tol": 1e-09
+    }
+  }
+}
