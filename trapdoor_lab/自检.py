@@ -7,6 +7,7 @@ from collapse_kernel import DEFAULT_PARAMS, solve, reproduce_tables
 from l2_shooting import solve_shooting
 from l3_rate import solve_rate
 from gtt import check_table_13_2, mechanism_scan, tangent_params
+from benchmarks import check_literature_anchors
 
 r = solve(DEFAULT_PARAMS, "active")
 t = reproduce_tables()
@@ -49,6 +50,13 @@ print(" GTT 定理13.2: sigma0_opt=%.6f, sigma_bar=%.6f kPa, 相对误差 %.2e"
       % (mech["sigma0_opt"], mech["sigma_bar"], mech["theorem13_2_rel_err"]))
 print(" GTT 耗散夹逼: D_true=%.3f <= D_UB=%.3f, D_LB=%.3f <= D_true; B=1 c_t=%.3f"
       % (mech["D_true"], mech["D_upper"], mech["D_lower"], tan0["c_t"]))
+lit = check_literature_anchors()
+print("-" * 64)
+print(" 二期文献锚点: 1g %d / 离心机 %d / 速率适用域 %d 项, 自洽核验 %s"
+      % (lit["counts"]["one_g"], lit["counts"]["centrifuge"],
+         lit["counts"]["rate_applicability"], "通过" if lit["all_pass"] else "未过"))
+print("   beta_eff 区间半宽 %.2f%% (标注 ±11%%), 出露角 61°, N_sat=18.2212"
+      % lit["beta_half_span_pct"])
 print("=" * 64)
 checks = [
     abs(r.psi0_deg - 37.56) < 0.01,
@@ -65,6 +73,7 @@ checks = [
     and mech["upper_residual"] >= 0 and mech["lower_residual"] >= -1e-6,
     tan0["selfcheck_residual"] < 1e-10
     and abs(tan0["c_t"] - DEFAULT_PARAMS["A"] * DEFAULT_PARAMS["sigma_t"]) < 1e-10,
+    lit["all_pass"] and lit["counts"]["one_g"] >= 10,
 ]
 print("自检结果: %s (%d/%d 通过)" % ("全部通过" if all(checks) else "存在失败",
                                    sum(checks), len(checks)))

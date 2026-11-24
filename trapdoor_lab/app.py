@@ -83,7 +83,9 @@ from gtt import (
     tangent_params, table_13_2, check_table_13_2,
     dissipation_bracket, mechanism_scan, tau_envelope, chord_tau,
 )
-from benchmarks import saturation_anchor
+from benchmarks import (
+    saturation_anchor, LITERATURE_ANCHORS, check_literature_anchors,
+)
 
 PORT = int(os.environ.get("TRAPDOOR_PORT", "8765"))
 
@@ -176,6 +178,7 @@ HTML = r"""<!DOCTYPE html>
     <label>切点 σ₀ (kPa，留空则自动取滑面均值)</label><input id="gtt_sigma0" type="number" step="any" placeholder="自动">
     <button class="ghost" onclick="runGTT()">GTT 切点 / 表13.2 / 定理13.2</button>
     <button class="ghost" onclick="runSat()">文献锚点 h_sat / h_cr</button>
+    <button class="ghost" onclick="runBench2()">二期文献基准集 (1g/离心机)</button>
     <button class="ghost" onclick="runMirror()">主动/被动镜像对照</button>
     <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
     <h2>参数扫描动态图件</h2>
@@ -498,6 +501,26 @@ async function runSat(){
     `</table><br><b>边界：</b>${s.boundary_note}。${s.source}`;
 }
 
+async function runBench2(){
+  document.getElementById("err").textContent=""; hidePlayer();
+  const r=await fetch("/api/bench2");
+  const d=await r.json();
+  if(d.error){ document.getElementById("err").textContent=d.error; return; }
+  const c=d.check, a=d.anchors;
+  document.getElementById("banner").innerHTML=
+    `<div class="banner ${c.all_pass?'ok':'warn'}"><b>二期文献基准集：</b>自洽核验 ${c.all_pass?'通过':'未过'}；`+
+    `1g ${c.counts.one_g} 项 / 离心机 ${c.counts.centrifuge} 项 / 速率适用域 ${c.counts.rate_applicability} 项</div>`+
+    `<div class="banner warn"><b>定位：</b>${c.note}。全部数值逐条摘自专著，不做拟合、不推导。</div>`;
+  document.getElementById("kv").innerHTML=Object.keys(c.checks)
+    .map(k=>`<span>${k}</span><span>${c.checks[k]?'✓':'✗'}</span>`).join("");
+  document.getElementById("figs").innerHTML="";
+  const grp=(title,rows)=>`<h3>${title}</h3><table><tr><th>锚点</th><th>数值</th><th>单位</th><th>含义 / 效应</th><th>来源</th><th>专著</th></tr>`+
+    rows.map(x=>{ const v=(x.value_min!==undefined)?`${x.value_min}–${x.value_max}`:x.value;
+      return `<tr><td>${x.label}</td><td>${v}</td><td>${x.unit}</td><td>${x.effect}</td><td>${x.source}</td><td>${x.ref}</td></tr>`;}).join("")+`</table>`;
+  document.getElementById("extra").innerHTML=
+    grp("1g 活门试验",a.one_g)+"<br>"+grp("离心机试验",a.centrifuge)+"<br>"+grp("速率层适用域 / 极限分析常数",a.rate_applicability);
+}
+
 async function exportReport(){
   if(!LAST){ return; }
   let tdata=null;
@@ -550,6 +573,9 @@ class Handler(BaseHTTPRequestHandler):
                        "application/json; charset=utf-8")
         elif path == "/api/health":
             self._send(200, b'{"ok":true}', "application/json")
+        elif path == "/api/bench2":
+            self._json({"anchors": LITERATURE_ANCHORS,
+                        "check": check_literature_anchors()})
         else:
             self._send(404, b"not found", "text/plain")
 

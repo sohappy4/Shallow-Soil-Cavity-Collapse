@@ -10,6 +10,11 @@
 | `/` 或 `/index.html` | 内嵌 Web 界面 | HTML |
 | `/api/health` | 存活探测 | `{"ok":true}` |
 | `/api/tables` | 论文 Table 3 / Table 4 复现数据 | `{"table3":{...},"table4":{...}}` |
+| `/api/bench2` | 二期文献基准集（1g / 离心机 / 速率适用域） | `{"anchors":{...},"check":{...}}` |
+
+`/api/bench2` 无需请求体，返回三组共 19 项文献锚点（`anchors`）及其机械自洽核验
+（`check`，含 `all_pass`、`checks`、`counts`、`beta_half_span_pct`）。
+数据逐条摘自专著，`note` 明确「文献报告值，程序不拟合、不推导」。
 
 ## 二、POST 接口
 
