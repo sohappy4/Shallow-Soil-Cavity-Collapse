@@ -10,10 +10,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.8
+      # Python 3.8 已 EOL：ubuntu-latest（26.04）的 setup-python 不再提供 3.8，
+      # 三次历史 run 均卡在此步（"version '3.8' ... not found for Ubuntu 26.04"）。
+      # 改用 3.11；本机银河麒麟仍用 3.8（venv），两边依赖 pin 版本一致、结果互证。
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: '3.11'
 
       - name: Install pinned dependencies
         run: |
