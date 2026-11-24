@@ -36,6 +36,7 @@ bash 一键启动.sh
 | 锚点 | 文献锚点 h_sat / h_cr | N_sat=18.2212、h_sat/D=4.555 自洽核验与门槛区分 |
 | 对照 | 主动/被动镜像对照 | 主动滑面关于 x=l 镜像后与被动逐点比对 |
 | 动画 | 二维坍塌过程动画 | 滑体土粒逐帧下落、活门下移、地表漏斗成形（运动学演示，非 DEM/应力云图）；样本 `trapdoor_lab/verify/anim_preview.png` |
+| FEM | FEM 二维力学场（应力/塑性区） | 平面应变 Q4 + Drucker–Prager 径向返回 + 位移控制活门；输出偏应力云图、塑性区、压力—位移曲线；样本 `trapdoor_lab/verify/fem_preview.png`；定性—半定量扩展，非 FELA 上下界 |
 | 动态 | 参数扫描动态图件 | h / A / B / σ_t 逐帧重算，直接观察 h 跨 h_cr 时结论翻转 |
 | 报告 | 导出计算报告 (HTML) | 输入、结果、六图、Table 3/4、可复现性元数据一并导出 |
 
@@ -45,7 +46,7 @@ bash 一键启动.sh
 
 ```bash
 cd trapdoor_lab
-../venv/bin/python -m unittest discover -s tests   # 68 项回归
+../venv/bin/python -m unittest discover -s tests   # 82 项回归（含 14 项 FEM）
 ../venv/bin/python 自检.py                          # 13 项基准自检
 ```
 
@@ -56,7 +57,7 @@ cd trapdoor_lab
 
 - `trapdoor_lab/运行说明.md` — 小白操作步骤
 - `trapdoor_lab/参数手册.md` — 参数符号、单位、范围、预设
-- `trapdoor_lab/API说明.md` — 六个接口与返回字段
+- `trapdoor_lab/API说明.md` — 全部接口与返回字段（含 `/api/fem`）
 - `trapdoor_lab/验证基准说明.md` — 基准分级、容差、理论张力
 - `trapdoor_lab/图号映射表.md` — 代码图 / 论文图 / 专著图三级对照
 - `trapdoor_lab/验收报告.md` — 实跑结果与边界记录
@@ -74,12 +75,15 @@ cd trapdoor_lab
 - L3 演示锚点对应 h/D=6，但专著写适用域 h/D≤1.4；程序按公式如实算并标记 `rate-degraded`。
 - GTT 只给切线层与固定机构上的**耗散积分夹逼**；专著未给 Q^UB(σ₀) 机构荷载表达式，
   程序不虚构严格荷载上界，也不冒充 FELA 上下界。
-- L1 闭式解只有沿滑面的一维场，「参数扫描动态图件」不是二维应力云图；
-  二维云图需 FELA/有限元层，未实现。
+- L1 闭式解只有沿滑面的一维场；「参数扫描动态图件」不是二维应力云图。
+  真·二维力学场由新增 FEM 模块提供（见下条），但两者理论族不同，不做同一性对照。
 - 「二维坍塌过程动画」是运动学演示：土粒位移是满足滑面约束与体积守恒的构造模板，
-  不是 DEM 颗粒接触求解，也不输出应力/塑性区数值。真·力学场需 FELA/FEM（M7）
-  或 Yade/PFC 独立后端（M8）；后者在 aarch64 银河麒麟安装极难。
-- 未实现：完整 FELA SOCP、DEM 后端、三维锥形求解器、局部坍塌形态数据。
+  不是 DEM 颗粒接触求解，也不输出应力/塑性区数值。
+- 「FEM 二维力学场」是横向引用的成熟有限元扩展（Q4 + DP 径向返回 + 强度折减框架），
+  按用户 2026-11-24 授权引入：应力场/塑性区/压力—位移曲线为数值解，
+  但**不是严格 FELA 上下界**，DP 圆化准则与专著幂型 Hoek–Brown 不同族，
+  小变形理想弹塑性、网格较粗，仅作定性—半定量演示；L1/L2/L3 仍为专著理论主结果。
+- 未实现：完整 FELA SOCP、Yade/PFC 独立 DEM 后端、三维锥形求解器、局部坍塌形态数据。
 
 ## 安全
 

@@ -95,6 +95,34 @@
 **边界**：运动学演示——粒子位移是满足滑面约束与体积守恒的构造模板，
 不是 DEM 颗粒接触求解，也不是有限元应力云图；不输出应力/塑性区数值（属 M7 远期）。
 
+### 5c. `/api/fem` —— 二维弹塑性 FEM 力学场
+
+请求：
+```json
+{"params": {"l":2.5,"h":3.0,"gamma":18,"q2":0},
+ "fem_params": {"E":20000,"nu":0.3,"c":25,"phi":20,"psi":0},
+ "opts": {"nx":12,"ny":9,"n_steps":12,"sr":1.0}}
+```
+
+`fem_params` 可省略（用内置默认）；`opts` 可省略（默认 12×9、12 步）。
+`sr` 为强度折减系数：`c'=c/sr`，`tanφ'=tanφ/sr`。
+
+响应：
+- `result.meta`：`method`、`source`、`boundary`、`converged`、`sr`、`c_eff`、
+  `phi_eff_deg`、`grid`、`n_elements`、`n_nodes`；
+- `result.curve`：每步 `step`、`door_down`、`reaction_kN`、`q_kPa`、
+  `plastic_frac`、`iters`、`residual`；step0 为未扰动静止压力对照点；
+- `result.field`：`centers`（单元中心 `[x,y]`）、`sxx`/`syy`/`txy`/`p`/`q`、
+  `epsp`、`yielded`、`plastic_frac`；
+- `result.peak_q_kPa` / `peak_step`、`params`；
+- `fig`：base64 PNG，三面板（偏应力 q 云图 / 塑性区 / 压力—位移曲线）；
+- `selfcheck`：DP 本构自检结果。
+
+**边界**：横向引用的成熟有限元（平面应变 Q4 + DP 径向返回 + 拉力截断 + 位移控制活门），
+按用户授权引入；不是严格 FELA 上下界，DP 圆化与专著幂型 Hoek–Brown 不同族，
+小变形理想弹塑性、网格较粗，定性—半定量演示。截面位移步内以弹性刚度修正 Newton
+（默认松弛 0.4、容差 1e-3），`converged` 为工程收敛标志，非严格数学收敛证明。
+
 ### 6. `/api/sat` —— 文献饱和高度锚点
 
 请求 `{"params": {同 /api/solve}}`。

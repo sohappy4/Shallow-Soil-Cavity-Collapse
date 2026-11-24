@@ -36,7 +36,8 @@ def provenance(params, mode: str = "active") -> dict:
     git commit 读不到时写 unknown，不伪造；代码指纹取全部计算模块的 sha256。
     """
     modules = ["app.py", "collapse_kernel.py", "plots.py", "l2_shooting.py",
-               "l3_rate.py", "gtt.py", "benchmarks.py"]
+               "l3_rate.py", "gtt.py", "benchmarks.py", "collapse_anim.py",
+               "fem2d.py"]
     digest = hashlib.sha256()
     for name in modules:
         path = os.path.join(HERE, name)
@@ -87,6 +88,7 @@ from benchmarks import (
     saturation_anchor, LITERATURE_ANCHORS, check_literature_anchors,
 )
 from collapse_anim import build_animation
+from fem2d import solve_fem, DEFAULT_FEM_PARAMS, selfcheck_dp
 
 PORT = int(os.environ.get("TRAPDOOR_PORT", "8765"))
 
@@ -167,6 +169,7 @@ HTML = r"""<!DOCTYPE html>
     <button class="ghost" onclick="runL2()">L2 打靶求滑动面</button>
     <button class="ghost" onclick="runL3()">L3 速率时间线</button>
     <button class="ghost" onclick="runCollapseAnim()">二维坍塌过程动画</button>
+    <button class="ghost" onclick="runFEM()">FEM 二维力学场（应力/塑性区）</button>
     <button class="ghost" onclick="toggleRate()">显示/隐藏 L3 参数</button>
     <div id="rateparams" style="display:block;margin-top:8px">
       <label>B_c 烟囱宽度 (m)</label><input id="rate_Bc" type="number" step="any" value="1.0">
@@ -229,6 +232,16 @@ HTML = r"""<!DOCTYPE html>
             不是 DEM 颗粒接触求解，也不是有限元应力云图；不输出应力/塑性区数值。
           </div>
         </div>
+      </div>
+    </div>
+    <div id="fempane" style="display:none;margin-top:14px;border:1px solid var(--line);border-radius:6px;padding:12px">
+      <b>二维弹塑性 FEM 力学场（应力云图 + 塑性区 + 荷载—位移曲线）</b>
+      <div class="note" style="margin:6px 0">平面应变 Q4 单元 + Drucker–Prager 径向返回 + 位移控制活门。数值解，非运动学演示。</div>
+      <div id="feminfo" class="note" style="margin:6px 0"></div>
+      <div id="femfig" style="margin-top:8px"></div>
+      <div class="note" style="margin-top:8px;color:#a00">
+        <b>边界：</b>有限元强度折减应力/塑性场，不是严格 FELA 上下界；DP 圆化准则与专著幂型 Hoek–Brown 不同族，
+        小变形理想弹塑性、网格较粗，属定性—半定量扩展。L1/L2/L3 仍为专著理论主结果。
       </div>
     </div>
     <div class="note" style="margin-top:14px">
@@ -396,6 +409,7 @@ function hidePlayer(){
   if(ANIM_TIMER){ clearInterval(ANIM_TIMER); ANIM_TIMER=null; }
   const e=document.getElementById("player"); if(e) e.style.display="none";
   const a=document.getElementById("animpane"); if(a) a.style.display="none";
+  const fem=document.getElementById("fempane"); if(fem) fem.style.display="none";
 }
 
 function zAtTime(t){
@@ -451,6 +465,32 @@ function togglePlay(){
     if(v>1000){ v=0; }
     e.value=v; drawL3Frame();
   },40);
+}
+
+// ===== 二维弹塑性 FEM 力学场（数值解）=====
+async function runFEM(){
+  document.getElementById("err").textContent=""; hidePlayer();
+  let params; try{ params=read(); }
+  catch(e){ document.getElementById("err").textContent=e.message; return; }
+  const pane=document.getElementById("fempane");
+  pane.style.display="block";
+  document.getElementById("femfig").innerHTML='<div class="note">网格求解中，约需数秒…</div>';
+  document.getElementById("feminfo").innerHTML="";
+  try{
+    const r=await fetch("/api/fem",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({params:params})});
+    const d=await r.json();
+    if(d.error){ document.getElementById("err").textContent=d.error; return; }
+    const s=d.result, meta=s.meta, cv=s.curve;
+    document.getElementById("feminfo").innerHTML=
+      "网格 "+meta.grid[0]+"×"+meta.grid[1]+"（"+meta.n_elements+" 单元 / "+meta.n_nodes+" 节点）<br>"+
+      "初始静止压力 "+fmt(cv[0].q_kPa,2)+" kPa → 末帧 "+fmt(cv[cv.length-1].q_kPa,2)+" kPa<br>"+
+      "塑性区占比 "+fmt(100*s.field.plastic_frac,1)+"%　收敛："+(meta.converged?"是":"否")+"<br>"+
+      "c'="+fmt(meta.c_eff,1)+" kPa，φ'="+fmt(meta.phi_eff_deg,1)+"°　本构自检："+(d.selfcheck.all_pass?"通过":"未通过");
+    document.getElementById("femfig").innerHTML=
+      '<figure><img src="data:image/png;base64,'+d.fig+'" alt="FEM" style="width:100%">'+
+      '<figcaption>左：偏应力 q 云图；中：塑性区（红=屈服单元）；右：活门压力—位移曲线（虚线=初始静止压力）</figcaption></figure>';
+  }catch(e){ document.getElementById("err").textContent="FEM 求解失败："+e.message; }
 }
 
 // ===== 二维坍塌过程动画（运动学演示）=====
@@ -678,7 +718,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         if path not in ("/api/solve", "/api/l2", "/api/l3", "/api/gtt",
-                        "/api/sat", "/api/mirror", "/api/anim"):
+                        "/api/sat", "/api/mirror", "/api/anim", "/api/fem"):
             self._send(404, b"not found", "text/plain")
             return
         try:
@@ -700,6 +740,22 @@ class Handler(BaseHTTPRequestHandler):
                                        opts={"passive": passive,
                                              "n_frames": int(payload.get("n_frames", 48))})
                 self._json({"result": anim})
+            elif path == "/api/fem":
+                p = payload["params"]
+                fem_p = dict(DEFAULT_FEM_PARAMS)
+                fem_p.update({k: v for k, v in
+                              payload.get("fem_params", {}).items() if k in fem_p})
+                fem_p["gamma"] = float(p.get("gamma", fem_p["gamma"]))
+                fem_p["sigma_v0"] = float(p.get("q2", fem_p["sigma_v0"]))
+                fem_p["l"] = float(p["l"])
+                fem_p["h"] = float(p["h"])
+                opts = dict(payload.get("opts", {}))
+                opts.setdefault("nx", 12)
+                opts.setdefault("ny", 9)
+                opts.setdefault("n_steps", 12)
+                r = solve_fem(fem_p, opts=opts)
+                self._json({"result": r, "fig": self._plot_fem(r),
+                            "selfcheck": selfcheck_dp()})
             elif path == "/api/solve":
                 params, mode = payload["params"], payload.get("mode", "active")
                 res = solve(params, mode)
@@ -852,6 +908,40 @@ class Handler(BaseHTTPRequestHandler):
         ax2.plot(tt, vv, "o-", lw=2)
         ax2.set_xticks(range(5)); ax2.set_xticklabels(labels, rotation=30, ha="right", fontsize=8)
         ax2.set_ylabel("v (m/s)"); ax2.set_title("Five stages"); ax2.grid(alpha=0.3)
+        fig.tight_layout()
+        return _fig_b64(fig)
+
+    @staticmethod
+    def _plot_fem(r):
+        """二维 FEM 结果：偏应力 q 云图 + 塑性区 + 荷载—位移曲线。"""
+        f = r["field"]
+        x = np.asarray([c[0] for c in f["centers"]])
+        y = np.asarray([c[1] for c in f["centers"]])
+        q = np.asarray(f["q"], dtype=float)
+        ep = np.asarray(f["epsp"], dtype=float)
+        yld = np.asarray(f["yielded"], dtype=bool)
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4.2))
+        try:
+            cn = axes[0].tricontourf(x, y, q, levels=14, cmap="viridis")
+            fig.colorbar(cn, ax=axes[0], label="q (kPa)")
+        except Exception:
+            sc = axes[0].scatter(x, y, c=q, cmap="viridis", s=24)
+            fig.colorbar(sc, ax=axes[0], label="q (kPa)")
+        axes[0].set_title("Deviatoric stress q")
+        axes[0].set_xlabel("x (m)"); axes[0].set_ylabel("y (m)")
+        # 塑性区：屈服单元红点，未屈服灰点
+        axes[1].scatter(x[~yld], y[~yld], c="#9fb0c0", s=14, label="elastic")
+        axes[1].scatter(x[yld], y[yld], c="#d94b3a", s=18, label="yielded")
+        axes[1].set_title("Plastic zone (%.0f%%)" % (100 * f["plastic_frac"]))
+        axes[1].set_xlabel("x (m)"); axes[1].set_ylabel("y (m)")
+        axes[1].legend(fontsize=8, loc="upper right")
+        dd = [c["door_down"] for c in r["curve"]]
+        qq = [c["q_kPa"] for c in r["curve"]]
+        axes[2].plot(dd, qq, "o-", color="#1f6fb5", lw=2, ms=4)
+        axes[2].axhline(qq[0], color="#aaa", ls="--", lw=1)
+        axes[2].set_title("Trapdoor pressure–displacement")
+        axes[2].set_xlabel("door down (m)"); axes[2].set_ylabel("q (kPa)")
+        axes[2].grid(alpha=0.3)
         fig.tight_layout()
         return _fig_b64(fig)
 
