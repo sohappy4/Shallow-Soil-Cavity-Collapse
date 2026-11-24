@@ -76,10 +76,10 @@ sha256sum -c MANIFEST.sha256        # 在仓库根目录执行
 
 ```
 version      : v1.1.0
-git commit   : （见发布提交）
+git commit   : 3fad0a2（M9 功能提交）
 python       : 3.8.10 (aarch64 venv) / CI 3.11 (x86_64)
 dependencies : numpy 1.24.4 / scipy 1.10.1 / matplotlib 3.7.5
 regression   : 146/146（含 18 项工程案例）
 self-check   : 14/14
-CI           : （见发布后 GitHub Actions 结论）
+CI           : success，run 45375058015（全量单测/自检/编译/JS 语法四步全过）
 ```
