@@ -33,4 +33,4 @@ jobs:
 
       - name: Compile all modules
         working-directory: trapdoor_lab
-        run: python -m py_compile app.py collapse_kernel.py plots.py l2_shooting.py l3_rate.py gtt.py benchmarks.py collapse_anim.py fem2d.py fem_anim.py fela.py
+        run: python -m py_compile app.py collapse_kernel.py plots.py l2_shooting.py l3_rate.py gtt.py benchmarks.py collapse_anim.py fem2d.py fem_anim.py fela.py dem2d.py dem_backend.py cone3d.py

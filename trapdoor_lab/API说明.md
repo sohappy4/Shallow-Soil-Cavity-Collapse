@@ -167,6 +167,52 @@ POST，请求：
 下限与 ψ 无关，Davis 折减单独报告（不混入数学夹逼）；深埋 `h/D>1.4`
 标记 `out-of-range`，不给出夹逼结论；`N_sat=18.2212` 仅为文献锚点，不由此推导。
 
+### 5f. `/api/dem` —— 二维 DEM 颗粒流（方案 M8）
+
+POST，请求：
+```json
+{"params": {"l":2.5, "h":3.0, "n_particles":360, "mu":0.5},
+ "opts":   {"settle_steps":150, "n_steps":500, "save_every":20, "max_particles":1200}}
+```
+- `params` 可只传覆盖键，其余补全 `DEFAULT_DEM_PARAMS`（含 `kn`、`mu`、`rho_p` 等）；
+- `opts.settle_steps`：活门关闭预沉积步数；`n_steps`：开闸后步数；
+  `save_every`：存帧间隔；`max_particles`：粒子上限（防界面卡死，默认 1200）。
+
+响应：
+- `result.frames`：逐帧颗粒轨迹。每帧 `{step,t,door_open,particles,radii,n_contacts,
+  door_force_N,kinetic_J,max_overlap,surface}`，`particles` 为 `[[x,y,vx,vy],...]`（SI）；
+- `result.curve`：沉积/流动两阶段的反力、接触数、动能时间序列；
+- `result.meta`：`n_particles`、`stable`、`peak_overlap_ratio`、
+  `final_overlap_ratio`、`kinetic_peak_J` 等；
+- `selfcheck`：DEM 内核 10 项自检；`fig`：四阶段速度着色 PNG（base64）。
+
+**边界**：二维圆盘 Cundall–Strack 接触，无转动自由度；刚度/摩擦为数值参数，
+非 μ(I) 细观反算；真·颗粒接触求解（非运动学模板），但横向引用、非专著理论、定性—半定量。
+
+### 5g. `/api/dem_backend` —— DEM 独立进程后端协议（dem/v1）
+
+POST，请求：`{"params":{...}, "opts":{...}, "backend":"local", "command":[...]}`。
+`backend=local` 直接调用自实现 MIT 参考后端；`backend=external` 时必须提供
+`command`（外部脚本 argv，脚本从 stdin 读 v1 请求、向 stdout 写 v1 响应）。
+
+响应：`response` 为 v1 响应对象（`protocol/backend/status/result`），`selfcheck` 为 9 项适配器自检。
+
+**许可证边界**：Yade(GPL)/PFC(商业) 仅以独立进程 + 文件/stdio 通信接入，
+不链接、不随包分发；本模块只定义契约，不含任何 GPL/商业求解代码。
+
+### 5h. `/api/cone` —— 三维锥形极限平衡（方案 M8 配套）
+
+POST，请求：`{"params":{"l":2.5,"h":3.0,"phi_deg":25,"c":10,"theta_deg":20,"K":0.6}}`。
+响应：
+- `results`：三形态（funnel/urn/shaft）各自的 `meta`（morph/r0/h…）、
+  `result`（`weight_kN`/`side_resistance_kN`/`support_pressure_kPa`/
+  `self_stable`/`mobilized_fraction`/`r_top`/`r_max`）、`profile`（z,r）与 `comparison`；
+- `critical_depth`：二分求 `q(h)=0` 的临界埋深（无根时 `has_root=false`）；
+- `selfcheck`：12 项内核自检；`fig`：三形态剖面 + 支护压力柱状图（base64）。
+
+**边界**：简化三维轴对称刚体滑体极限平衡，非三维 FEM/FELA/SOCP；三形态命名对齐专著，
+但轴对称推广为本程序扩展、非专著原有公式；与 L1 二维解只作量级对照，不判同一性。
+
 ### 6. `/api/sat` —— 文献饱和高度锚点
 
 请求 `{"params": {同 /api/solve}}`。

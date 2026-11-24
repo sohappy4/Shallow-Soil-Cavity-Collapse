@@ -37,7 +37,8 @@ def provenance(params, mode: str = "active") -> dict:
     """
     modules = ["app.py", "collapse_kernel.py", "plots.py", "l2_shooting.py",
                "l3_rate.py", "gtt.py", "benchmarks.py", "collapse_anim.py",
-               "fem2d.py"]
+               "fem2d.py", "fem_anim.py", "fela.py", "dem2d.py",
+               "dem_backend.py", "cone3d.py"]
     digest = hashlib.sha256()
     for name in modules:
         path = os.path.join(HERE, name)
@@ -91,6 +92,9 @@ from collapse_anim import build_animation
 from fem2d import solve_fem, DEFAULT_FEM_PARAMS, selfcheck_dp
 from fem_anim import build_fem_animation
 from fela import solve_fela, fela_figure_data
+from dem2d import solve_dem, selfcheck_dem, DEFAULT_DEM_PARAMS
+from dem_backend import run_backend, selfcheck_backend, make_request
+from cone3d import solve_cone, critical_depth, selfcheck_cone, DEFAULT_CONE_PARAMS
 
 PORT = int(os.environ.get("TRAPDOOR_PORT", "8765"))
 
@@ -174,6 +178,8 @@ HTML = r"""<!DOCTYPE html>
     <button class="ghost" onclick="runFEM()">FEM 二维力学场（应力/塑性区）</button>
     <button class="ghost" onclick="runFEMAnim()">FEM 应力场动态云图</button>
     <button class="ghost" onclick="runFELA()">FELA 极限分析上下界夹逼</button>
+    <button class="ghost" onclick="runDEM()">DEM 二维颗粒流（真接触求解）</button>
+    <button class="ghost" onclick="runCone()">三维锥形极限平衡（三形态）</button>
     <div style="margin:6px 0 2px"><label>ψ 剪胀角 (°，仅 Davis 折减，≤φ₀；留空=不折减)</label>
       <input id="fela_psi" type="number" step="any" value="10" style="width:90px"></div>
     <button class="ghost" onclick="toggleRate()">显示/隐藏 L3 参数</button>
@@ -272,6 +278,40 @@ HTML = r"""<!DOCTYPE html>
         下限与 ψ 无关（专著 §7.7.1），上限 Davis 折减单独报告（§7.3）。
         N_sat=18.2212 仅为文献锚点，本模块不推导。深埋（h/D&gt;1.4）因幂型包线无临界状态封顶，
         显式标记非物理、不给夹逼结论。
+      </div>
+    </div>
+    <div id="dempane" style="display:none;margin-top:14px;border:1px solid var(--line);border-radius:6px;padding:12px">
+      <b>DEM 二维颗粒流（方案 M8）</b>
+      <div class="note" style="margin:6px 0">Cundall–Strack 线性接触 + Coulomb 摩擦，逐颗粒积分牛顿方程：真·颗粒接触求解，非运动学模板。</div>
+      <div class="row" style="margin:6px 0">
+        <div><label>颗粒数</label><input id="dem_n" type="number" value="360" step="50"></div>
+        <div><label>沉积步</label><input id="dem_settle" type="number" value="150" step="10"></div>
+        <div><label>流动步</label><input id="dem_steps" type="number" value="500" step="50"></div>
+        <div><label>摩擦 μ</label><input id="dem_mu" type="number" value="0.5" step="0.1"></div>
+      </div>
+      <div id="deminfo" class="note" style="margin:6px 0;line-height:1.7"></div>
+      <div id="demfig" style="margin-top:8px"></div>
+      <div class="note" style="margin-top:8px;color:#a00">
+        <b>边界：</b>二维圆盘简化 DEM，无转动自由度；刚度/摩擦为数值参数，非由 μ(I) 反算；
+        横向引用成熟离散元方法，非专著理论，结果定性—半定量。外部 Yade/PFC 通过独立进程协议接入，
+        不链接、不分发（许可证隔离）。
+      </div>
+    </div>
+    <div id="conepane" style="display:none;margin-top:14px;border:1px solid var(--line);border-radius:6px;padding:12px">
+      <b>三维锥形极限平衡（方案 M8 配套）</b>
+      <div class="note" style="margin:6px 0">轴对称滑体：漏斗 / 瓮形 / 井筒三形态，自重与侧摩阻积分求支护压力；与 L1 二维解只作量级对照。</div>
+      <div class="row" style="margin:6px 0">
+        <div><label>φ 内摩擦角 (°)</label><input id="cone_phi" type="number" value="25" step="1"></div>
+        <div><label>c 黏聚力 (kPa)</label><input id="cone_c" type="number" value="10" step="1"></div>
+        <div><label>漏斗角 θ (°)</label><input id="cone_theta" type="number" value="20" step="1"></div>
+        <div><label>K 侧压系数</label><input id="cone_K" type="number" value="0.6" step="0.1"></div>
+      </div>
+      <div id="coneinfo" class="note" style="margin:6px 0;line-height:1.7"></div>
+      <div id="conefig" style="margin-top:8px"></div>
+      <div class="note" style="margin-top:8px;color:#a00">
+        <b>边界：</b>简化三维轴对称刚体滑体极限平衡，非三维 FEM/FELA/SOCP；
+        三形态命名对齐专著，但轴对称推广为本程序扩展、非专著原有公式；
+        c/φ/K 与 L1 幂型参数不同族，不做同一性对照。
       </div>
     </div>
     <div class="note" style="margin-top:14px">
@@ -443,6 +483,8 @@ function hidePlayer(){
   const fem=document.getElementById("fempane"); if(fem) fem.style.display="none";
   const fa=document.getElementById("femanimpane"); if(fa) fa.style.display="none";
   const fe=document.getElementById("felapane"); if(fe) fe.style.display="none";
+  const dp=document.getElementById("dempane"); if(dp) dp.style.display="none";
+  const cp=document.getElementById("conepane"); if(cp) cp.style.display="none";
 }
 
 function zAtTime(t){
@@ -558,6 +600,78 @@ async function runFELA(){
       '<figure><img src="data:image/png;base64,'+d.fig+'" alt="FELA bracket" style="width:100%">'+
       '<figcaption>左：上下界夹逼带随线性化段数 K 收窄（虚线=L1 闭式解）；右：区间宽度对数下降</figcaption></figure>';
   }catch(e){ document.getElementById("err").textContent="FELA 求解失败："+e.message; }
+}
+
+// ===== DEM 二维颗粒流（方案 M8，真接触求解）=====
+async function runDEM(){
+  document.getElementById("err").textContent=""; hidePlayer();
+  let params; try{ params=read(); }
+  catch(e){ document.getElementById("err").textContent=e.message; return; }
+  const n=parseInt(document.getElementById("dem_n").value)||360;
+  const settle=parseInt(document.getElementById("dem_settle").value)||150;
+  const steps=parseInt(document.getElementById("dem_steps").value)||500;
+  const mu=parseFloat(document.getElementById("dem_mu").value);
+  const p=Object.assign({},params,{n_particles:n});
+  if(isFinite(mu)) p.mu=mu;
+  const o={settle_steps:settle,n_steps:steps,save_every:Math.max(1,Math.round(steps/25)),
+           max_particles:1200};
+  const pane=document.getElementById("dempane"); pane.style.display="block";
+  document.getElementById("deminfo").innerHTML="DEM 接触求解中（"+n+" 颗粒 / "+(settle+steps)+" 步）…";
+  document.getElementById("demfig").innerHTML="";
+  try{
+    const r=await fetch("/api/dem",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({params:p,opts:o})});
+    const d=await r.json();
+    if(d.error){ document.getElementById("err").textContent=d.error; return; }
+    const s=d.result,m=s.meta,f0=s.frames[0],fl=s.frames[s.frames.length-1];
+    const lines=[
+      "颗粒 "+fmt(m.n_particles,0)+" 个；总时长 "+fmt(m.total_time,3)+" s（沉积 "+fmt(m.settle_steps,0)+" + 流动 "+fmt(m.n_steps,0)+" 步）",
+      "稳定："+(m.stable?"是":"否")+"；峰值重叠 "+fmt(m.peak_overlap_ratio,3)+" R；帧数 "+fmt(m.n_frames,0),
+      "活门关闭反力 "+fmt(f0.door_force_N,1)+" N → 开闸后 "+fmt(fl.door_force_N,1)+" N",
+      "峰值动能 "+fmt(m.kinetic_peak_J,1)+" J；末帧接触数 "+fmt(m.final_n_contacts,0),
+      "本构自检："+(d.selfcheck.all_pass?"全部通过":"有失败项")
+    ];
+    document.getElementById("deminfo").innerHTML=lines.join("<br>");
+    document.getElementById("demfig").innerHTML=
+      '<figure><img src="data:image/png;base64,'+d.fig+'" alt="DEM particle flow" style="width:100%">'+
+      '<figcaption>四阶段颗粒流（按速度着色，红=快）：关闭→开闸→漏斗成形→流动；虚线=开启的活门</figcaption></figure>';
+  }catch(e){ document.getElementById("err").textContent="DEM 求解失败："+e.message; }
+}
+
+// ===== 三维锥形极限平衡（方案 M8 配套）=====
+async function runCone(){
+  document.getElementById("err").textContent=""; hidePlayer();
+  let params; try{ params=read(); }
+  catch(e){ document.getElementById("err").textContent=e.message; return; }
+  const phi=parseFloat(document.getElementById("cone_phi").value);
+  const c=parseFloat(document.getElementById("cone_c").value);
+  const th=parseFloat(document.getElementById("cone_theta").value);
+  const K=parseFloat(document.getElementById("cone_K").value);
+  const p=Object.assign({},params);
+  if(isFinite(phi)) p.phi_deg=phi;
+  if(isFinite(c)) p.c=c;
+  if(isFinite(th)) p.theta_deg=th;
+  if(isFinite(K)) p.K=K;
+  const pane=document.getElementById("conepane"); pane.style.display="block";
+  document.getElementById("coneinfo").innerHTML="三维轴对称极限平衡求解中…";
+  try{
+    const r=await fetch("/api/cone",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({params:p})});
+    const d=await r.json();
+    if(d.error){ document.getElementById("err").textContent=d.error; return; }
+    const lines=d.results.map(x=>{
+      const q=x.result;
+      return x.meta.morph+"：W="+fmt(q.weight_kN,1)+" kN，S="+fmt(q.side_resistance_kN,1)+
+        " kN，q="+fmt(q.support_pressure_kPa,3)+" kPa，动员 "+fmt(100*q.mobilized_fraction,1)+"%";
+    });
+    if(d.critical_depth) lines.push("临界埋深 h_cr："+(d.critical_depth.has_root?
+      fmt(d.critical_depth.h_cr,3)+" m":"搜索区间内无自稳根"));
+    lines.push("自检："+(d.selfcheck.all_pass?"全部通过":"有失败项"));
+    document.getElementById("coneinfo").innerHTML=lines.join("<br>");
+    document.getElementById("conefig").innerHTML=
+      '<figure><img src="data:image/png;base64,'+d.fig+'" alt="3D cone" style="width:100%">'+
+      '<figcaption>左：三形态轴对称滑面剖面；右：主动支护压力量级对照（维度不同，不与 L1 判同一性）</figcaption></figure>';
+  }catch(e){ document.getElementById("err").textContent="三维锥形求解失败："+e.message; }
 }
 
 // ===== FEM 应力场动态云图（方案 M5 / M6）=====
@@ -825,7 +939,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path not in ("/api/solve", "/api/l2", "/api/l3", "/api/gtt",
                         "/api/sat", "/api/mirror", "/api/anim", "/api/fem",
-                        "/api/fem_anim", "/api/fela"):
+                        "/api/fem_anim", "/api/fela",
+                        "/api/dem", "/api/dem_backend", "/api/cone"):
             self._send(404, b"not found", "text/plain")
             return
         try:
@@ -856,6 +971,32 @@ class Handler(BaseHTTPRequestHandler):
                 band = fela_figure_data(p, opts)
                 self._json({"result": r, "band": band,
                             "fig": self._plot_fela(band, r)})
+            elif path == "/api/dem":
+                p = dict(DEFAULT_DEM_PARAMS)
+                p.update({k: v for k, v in
+                          payload.get("params", {}).items() if k in p})
+                o = dict(payload.get("opts", {}))
+                r = solve_dem(p, o)
+                self._json({"result": r, "selfcheck": selfcheck_dem(),
+                            "fig": self._plot_dem(r)})
+            elif path == "/api/dem_backend":
+                req = make_request(payload.get("params", {}),
+                                   payload.get("opts", {}),
+                                   backend=payload.get("backend", "local"))
+                if payload.get("command"):
+                    req["command"] = payload["command"]
+                resp = run_backend(req)
+                self._json({"response": resp, "selfcheck": selfcheck_backend()})
+            elif path == "/api/cone":
+                p = dict(DEFAULT_CONE_PARAMS)
+                p.update({k: v for k, v in
+                          payload.get("params", {}).items() if k in p})
+                morphs = payload.get("morphs", ["funnel", "urn", "shaft"])
+                results = [solve_cone(p, m) for m in morphs]
+                cr = critical_depth(p, morphs[0]) if morphs else None
+                self._json({"results": results, "critical_depth": cr,
+                            "selfcheck": selfcheck_cone(),
+                            "fig": self._plot_cone(results)})
             elif path == "/api/fem_anim":
                 p = payload["params"]
                 fem_p = dict(DEFAULT_FEM_PARAMS)
@@ -1108,6 +1249,62 @@ class Handler(BaseHTTPRequestHandler):
         ax2.set_ylabel("bracket width (kPa)")
         ax2.set_title("Bracket narrows monotonically")
         ax2.grid(alpha=0.3, which="both")
+        fig.tight_layout()
+        return _fig_b64(fig)
+
+    @staticmethod
+    def _plot_dem(r):
+        """DEM 颗粒流四阶段：初态/开闸/漏斗成形/末态，按速度着色。"""
+        frames = r["frames"]
+        picks = [0, len(frames) // 3, 2 * len(frames) // 3, len(frames) - 1]
+        fig, axes = plt.subplots(1, 4, figsize=(15, 3.6))
+        for ax, idx in zip(axes, picks):
+            f = frames[idx]
+            pts = np.asarray(f["particles"])
+            spd = np.sqrt(pts[:, 2] ** 2 + pts[:, 3] ** 2)
+            sc = ax.scatter(pts[:, 0], pts[:, 1], c=spd, cmap="YlOrRd",
+                            s=12, vmin=0.0, vmax=4.0)
+            dw = r["meta"]["door_w"]
+            x0, x1 = 0.5 * (r["meta"]["domain_w"] - dw), 0.5 * (r["meta"]["domain_w"] + dw)
+            ax.plot([x0, x1], [0, 0], color="black", lw=1.5,
+                    ls="--" if f["door_open"] else "-")
+            ax.set_xlim(0.0, r["meta"]["domain_w"])
+            ax.set_ylim(-0.04, r["meta"]["domain_h"] + 0.02)
+            ax.set_aspect("equal")
+            ax.set_title("t=%.2fs %s\nKE=%.0f J" %
+                         (f["t"], "OPEN" if f["door_open"] else "CLOSED", f["kinetic_J"]),
+                         fontsize=8)
+            ax.set_xlabel("x (m)", fontsize=8)
+            ax.set_ylabel("y (m)", fontsize=8)
+            ax.tick_params(labelsize=7)
+        fig.colorbar(sc, ax=axes.tolist(), label="speed (m/s)", shrink=0.6)
+        fig.suptitle("2D DEM particle flow (Cundall-Strack contacts)", fontsize=10)
+        fig.subplots_adjust(left=0.04, right=0.90, top=0.84, bottom=0.14, wspace=0.22)
+        return _fig_b64(fig)
+
+    @staticmethod
+    def _plot_cone(results):
+        """三维三形态剖面对照 + 支护压力柱状图。"""
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.2))
+        colors = {"funnel": "#1f6fb5", "urn": "#7a4fb5", "shaft": "#2e8b57"}
+        for res in results:
+            m = res["meta"]["morph"]
+            prof = res["profile"]
+            ax1.plot(prof["r"], prof["z"], color=colors.get(m, "#333"), lw=2, label=m)
+        ax1.set_xlabel("cavity radius r (m)")
+        ax1.set_ylabel("height z (m)")
+        ax1.set_title("Axisymmetric slip surfaces")
+        ax1.legend(fontsize=8)
+        ax1.grid(alpha=0.3)
+        names = [res["meta"]["morph"] for res in results]
+        vals = [res["result"]["support_pressure_kPa"] for res in results]
+        bars = ax2.bar(names, vals, color=[colors.get(n, "#999") for n in names])
+        for b, v in zip(bars, vals):
+            ax2.text(b.get_x() + b.get_width() / 2, v, "%.2f" % v,
+                     ha="center", va="bottom", fontsize=8)
+        ax2.set_ylabel("support pressure q (kPa)")
+        ax2.set_title("3D limit equilibrium (order-of-magnitude)")
+        ax2.grid(alpha=0.3, axis="y")
         fig.tight_layout()
         return _fig_b64(fig)
 

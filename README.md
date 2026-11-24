@@ -39,6 +39,8 @@ bash 一键启动.sh
 | FEM | FEM 二维力学场（应力/塑性区） | 平面应变 Q4 + Drucker–Prager 径向返回 + 位移控制活门；输出偏应力云图、塑性区、压力—位移曲线；样本 `trapdoor_lab/verify/fem_preview.png`；定性—半定量扩展，非 FELA 上下界 |
 | FEM | FEM 应力场动态云图 | 逐位移步应力/塑性区演化，全场统一色标，可滑块逐帧查看 + GIF 自动播放（方案 M5/M6）；样本 `trapdoor_lab/verify/fem_demo.gif` |
 | FELA | FELA 极限分析上下界夹逼 | 线性化屈服面 + 对偶线性规划：内接多面体给静力下限、外接给运动上限；主动支护压力夹逼并包住 L1 闭式解，Davis 折减独立报告（方案 M7）；样本 `trapdoor_lab/verify/fela_bracket.png` |
+| DEM | DEM 二维颗粒流（真接触求解） | Cundall–Strack 线性接触 + Coulomb 摩擦，逐颗粒牛顿积分；活门开闭、颗粒流出、地表漏斗，四阶段速度着色图（方案 M8）；样本 `trapdoor_lab/verify/dem_preview.png` |
+| 3D | 三维锥形极限平衡 | 轴对称漏斗/瓮形/井筒三形态滑体，自重与侧阻积分、临界埋深；与 L1 二维解只作量级对照（方案 M8 配套） |
 | 动态 | 参数扫描动态图件 | h / A / B / σ_t 逐帧重算，直接观察 h 跨 h_cr 时结论翻转 |
 | 报告 | 导出计算报告 (HTML) | 输入、结果、六图、Table 3/4、可复现性元数据一并导出 |
 
@@ -48,7 +50,7 @@ bash 一键启动.sh
 
 ```bash
 cd trapdoor_lab
-../venv/bin/python -m unittest discover -s tests   # 104 项回归（含 23 项 FEM + 13 项 FELA）
+../venv/bin/python -m unittest discover -s tests   # 128 项回归（含 23 FEM + 13 FELA + 24 DEM/3D）
 ../venv/bin/python 自检.py                          # 13 项基准自检
 ```
 
@@ -89,7 +91,15 @@ cd trapdoor_lab
   （内接→静力下限、外接→运动上限，q 夹逼包住 L1 闭式解），但仍**不是 SOCP 圆锥规划**、
   不是幂型精确解；下限与 ψ 无关、Davis 折减单独报告；深埋 h/D>1.4 因幂型包线无
   临界状态封顶，显式标记非物理、不给夹逼结论；N_sat=18.2212 仅为文献锚点，本模块不推导。
-- 未实现：完整 FELA SOCP 圆锥规划、Yade/PFC 独立 DEM 后端、三维锥形求解器、局部坍塌形态数据。
+- 「DEM 二维颗粒流」是**真·颗粒接触求解**（非运动学演示）：Cundall–Strack 线性接触、
+  切向历史与 Coulomb 摩擦、逐颗粒牛顿积分。但为二维圆盘、无转动自由度、刚度/摩擦为
+  数值参数（非 μ(I) 细观反算），横向引用成熟离散元方法、非专著理论，定性—半定量；
+  Yade/PFC 等外部后端通过 `dem_backend.py` 的独立进程 JSON 协议接入（GPL/商业代码
+  不链接、不分发），当前程序包只含自实现的 MIT 参考后端。
+- 「三维锥形极限平衡」是轴对称刚体滑体 + 侧摩阻积分，三形态命名对齐专著，但轴对称
+  推广为本程序扩展、非专著原有公式；不是三维 FEM/FELA/SOCP，与 L1 二维解只作量级对照。
+- 未实现：完整 FELA SOCP 圆锥规划、Yade/PFC 外部 DEM 求解器本身（仅定义接入协议）、
+  三维 FEM/FELA、局部坍塌形态数据。
 
 ## 安全
 
