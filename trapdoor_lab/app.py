@@ -90,6 +90,7 @@ from benchmarks import (
 from collapse_anim import build_animation
 from fem2d import solve_fem, DEFAULT_FEM_PARAMS, selfcheck_dp
 from fem_anim import build_fem_animation
+from fela import solve_fela, fela_figure_data
 
 PORT = int(os.environ.get("TRAPDOOR_PORT", "8765"))
 
@@ -172,6 +173,9 @@ HTML = r"""<!DOCTYPE html>
     <button class="ghost" onclick="runCollapseAnim()">二维坍塌过程动画</button>
     <button class="ghost" onclick="runFEM()">FEM 二维力学场（应力/塑性区）</button>
     <button class="ghost" onclick="runFEMAnim()">FEM 应力场动态云图</button>
+    <button class="ghost" onclick="runFELA()">FELA 极限分析上下界夹逼</button>
+    <div style="margin:6px 0 2px"><label>ψ 剪胀角 (°，仅 Davis 折减，≤φ₀；留空=不折减)</label>
+      <input id="fela_psi" type="number" step="any" value="10" style="width:90px"></div>
     <button class="ghost" onclick="toggleRate()">显示/隐藏 L3 参数</button>
     <div id="rateparams" style="display:block;margin-top:8px">
       <label>B_c 烟囱宽度 (m)</label><input id="rate_Bc" type="number" step="any" value="1.0">
@@ -256,6 +260,18 @@ HTML = r"""<!DOCTYPE html>
       <div class="note" style="margin-top:8px;color:#a00">
         <b>边界：</b>这是 FEM 数值场（非运动学演示），但仍是定性—半定量扩展：DP 圆化 ≠ 幂型 Hoek–Brown，
         小变形理想弹塑性，非严格 FELA 上下界。GIF 为同一组帧的自动播放版本（方案 M6 演示视频最小实现）。
+      </div>
+    </div>
+    <div id="felapane" style="display:none;margin-top:14px;border:1px solid var(--line);border-radius:6px;padding:12px">
+      <b>FELA 极限分析上下界夹逼（方案 M7）</b>
+      <div class="note" style="margin:6px 0">把上下限定理写成一对对偶线性规划：内接屈服多面体给静力下限抗力、外接给运动上限抗力；主动支护压力夹逼方向反转。</div>
+      <div id="felainfo" class="note" style="margin:6px 0;line-height:1.7"></div>
+      <div id="felafig" style="margin-top:8px"></div>
+      <div class="note" style="margin-top:8px;color:#a00">
+        <b>边界：</b>线性化屈服面的多面体极限分析，<b>不是 SOCP 圆锥规划</b>、不是幂型精确解；
+        下限与 ψ 无关（专著 §7.7.1），上限 Davis 折减单独报告（§7.3）。
+        N_sat=18.2212 仅为文献锚点，本模块不推导。深埋（h/D&gt;1.4）因幂型包线无临界状态封顶，
+        显式标记非物理、不给夹逼结论。
       </div>
     </div>
     <div class="note" style="margin-top:14px">
@@ -426,6 +442,7 @@ function hidePlayer(){
   const a=document.getElementById("animpane"); if(a) a.style.display="none";
   const fem=document.getElementById("fempane"); if(fem) fem.style.display="none";
   const fa=document.getElementById("femanimpane"); if(fa) fa.style.display="none";
+  const fe=document.getElementById("felapane"); if(fe) fe.style.display="none";
 }
 
 function zAtTime(t){
@@ -507,6 +524,40 @@ async function runFEM(){
       '<figure><img src="data:image/png;base64,'+d.fig+'" alt="FEM" style="width:100%">'+
       '<figcaption>左：偏应力 q 云图；中：塑性区（红=屈服单元）；右：活门压力—位移曲线（虚线=初始静止压力）</figcaption></figure>';
   }catch(e){ document.getElementById("err").textContent="FEM 求解失败："+e.message; }
+}
+
+// ===== FELA 极限分析上下界夹逼（方案 M7）=====
+async function runFELA(){
+  document.getElementById("err").textContent=""; hidePlayer();
+  let params; try{ params=read(); }
+  catch(e){ document.getElementById("err").textContent=e.message; return; }
+  const pane=document.getElementById("felapane");
+  pane.style.display="block";
+  document.getElementById("felafig").innerHTML='<div class="note">LP 求解中…</div>';
+  const psi=parseFloat(document.getElementById("fela_psi").value);
+  const opts={K:12,n_points:41};
+  if(isFinite(psi)) opts.psi_deg=psi;
+  try{
+    const r=await fetch("/api/fela",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({params:params,opts:opts})});
+    const d=await r.json();
+    if(d.error){ document.getElementById("err").textContent=d.error; return; }
+    const s=d.result, rb=s.resistance, bk=s.bracket;
+    const applicable=s.meta.applicable;
+    const lines=[
+      "线性化段数 K="+fmt(s.meta.K,0)+"，滑面离散点 "+fmt(s.meta.n_points,0),
+      "适用域："+(applicable?"浅埋适用（h/D="+fmt(rb.h_over_D,2)+"）":"超界 "+fmt(rb.h_over_D,2)+"（非物理，不给夹逼）"),
+      "抗力 Ra="+fmt(rb.Ra_LB,3)+" ≤ "+fmt(rb.Ra_exact,3)+" ≤ "+fmt(rb.Ra_UB,3)+" kPa·m（L1 精确解居中："+rb.Ra_interval_ok+"）",
+      "主动支护压力夹逼 q∈["+fmt(bk.q_LB_kPa,4)+", "+fmt(bk.q_UB_kPa,4)+"] kPa；L1 闭式 "+fmt(d.band.q_l1_closed_form,4)+" kPa",
+      "夹逼成立："+(bk.ok?"是":"否")+"（区间宽 "+fmt(rb.q_active_width,4)+" kPa）"
+    ];
+    if(rb.davis) lines.push("Davis 折减 ψ="+fmt(rb.davis.psi_deg,1)+"°：ratio="+fmt(rb.davis.ratio,4)+
+      "，折减上限 q="+fmt(rb.davis.q_active_UB_reduced,3)+" kPa（独立工程口径）");
+    document.getElementById("felainfo").innerHTML=lines.join("<br>");
+    document.getElementById("felafig").innerHTML=
+      '<figure><img src="data:image/png;base64,'+d.fig+'" alt="FELA bracket" style="width:100%">'+
+      '<figcaption>左：上下界夹逼带随线性化段数 K 收窄（虚线=L1 闭式解）；右：区间宽度对数下降</figcaption></figure>';
+  }catch(e){ document.getElementById("err").textContent="FELA 求解失败："+e.message; }
 }
 
 // ===== FEM 应力场动态云图（方案 M5 / M6）=====
@@ -774,7 +825,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path not in ("/api/solve", "/api/l2", "/api/l3", "/api/gtt",
                         "/api/sat", "/api/mirror", "/api/anim", "/api/fem",
-                        "/api/fem_anim"):
+                        "/api/fem_anim", "/api/fela"):
             self._send(404, b"not found", "text/plain")
             return
         try:
@@ -796,6 +847,15 @@ class Handler(BaseHTTPRequestHandler):
                                        opts={"passive": passive,
                                              "n_frames": int(payload.get("n_frames", 48))})
                 self._json({"result": anim})
+            elif path == "/api/fela":
+                p = dict(DEFAULT_PARAMS)
+                p.update({k: float(v) for k, v in
+                          payload.get("params", {}).items() if k in p})
+                opts = dict(payload.get("opts", {}))
+                r = solve_fela(p, opts)
+                band = fela_figure_data(p, opts)
+                self._json({"result": r, "band": band,
+                            "fig": self._plot_fela(band, r)})
             elif path == "/api/fem_anim":
                 p = payload["params"]
                 fem_p = dict(DEFAULT_FEM_PARAMS)
@@ -1017,6 +1077,37 @@ class Handler(BaseHTTPRequestHandler):
         axes[2].set_title("Trapdoor pressure–displacement")
         axes[2].set_xlabel("door down (m)"); axes[2].set_ylabel("q (kPa)")
         axes[2].grid(alpha=0.3)
+        fig.tight_layout()
+        return _fig_b64(fig)
+
+    @staticmethod
+    def _plot_fela(band, result):
+        """FELA 夹逼带：q 上下界随线性化段数 K 收窄，L1 闭式解作参考线。"""
+        K = band["K"]
+        lb, ub = band["q_LB"], band["q_UB"]
+        exact = band["q_l1_closed_form"]
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.2))
+        valid = [i for i, v in enumerate(lb) if v is not None and ub[i] is not None]
+        kk = [K[i] for i in valid]
+        lo = [lb[i] for i in valid]
+        hi = [ub[i] for i in valid]
+        ax1.fill_between(kk, lo, hi, color="#b9d6f2", alpha=0.7,
+                         label="FELA bracket")
+        ax1.plot(kk, lo, "o-", color="#1f6fb5", lw=1.6, ms=4, label="q_LB")
+        ax1.plot(kk, hi, "s-", color="#d94b3a", lw=1.6, ms=4, label="q_UB")
+        ax1.axhline(exact, color="#333", ls="--", lw=1.4,
+                    label="L1 closed form = %.4f" % exact)
+        ax1.set_xlabel("linearization segments K")
+        ax1.set_ylabel("active support pressure q (kPa)")
+        ax1.set_title("Upper / lower bound bracket")
+        ax1.legend(fontsize=8, loc="upper right")
+        ax1.grid(alpha=0.3)
+        w = [band["width"][i] for i in valid]
+        ax2.semilogy(kk, w, "o-", color="#7a4fb5", lw=1.8, ms=5)
+        ax2.set_xlabel("linearization segments K")
+        ax2.set_ylabel("bracket width (kPa)")
+        ax2.set_title("Bracket narrows monotonically")
+        ax2.grid(alpha=0.3, which="both")
         fig.tight_layout()
         return _fig_b64(fig)
 

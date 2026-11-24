@@ -141,6 +141,32 @@
 **边界**：底层是 FEM 数值场（非运动学演示），但仍是定性—半定量扩展：
 DP 圆化、小变形理想弹塑性、非严格 FELA 上下界。
 
+### 5e. `/api/fela` —— FELA 极限分析上下界夹逼（方案 M7）
+
+POST，请求：
+```json
+{"params": {"l":2.5, "h":3.0, "gamma":18, "q2":0},
+ "opts":   {"K":12, "n_points":41, "psi_deg":10}}
+```
+- `params` 可只传需覆盖的键，其余自动补全自 `DEFAULT_PARAMS`；
+- `opts.K`：屈服包线线性化段数（默认 12，范围 2–64）；`n_points`：滑面离散点数；
+  `psi_deg`：剪胀角（可选，仅用于 Davis 折减报告，`>φ₀` 自动钳制为关联）。
+
+响应：
+- `result.resistance`：`Ra_LB/Ra_exact/Ra_UB`（抗力上下界与 L1 精确值）、
+  `Ra_interval_ok`、`q_active_LB/UB/width`、`h_over_D`、`applicable`、`davis`；
+- `result.bracket`：`ok`、`q_LB_kPa`、`q_UB_kPa`（主动支护压力夹逼区间）；
+- `result.meta`：`regime`（`shallow-applicable` / `out-of-range`）、实际 `K`/`n_points`；
+- `band`：`K` 序列及对应 `q_LB`/`q_UB`/`width`，供夹逼带图；
+- `fig`：`q` 上下界随 K 收窄 + 区间宽度对数下降双面板 PNG（base64）。
+
+数学口径：内接多面体→静力下限抗力，外接→运动上限抗力；主动支护压力
+`q=over−Ra/l` 是 `Ra` 的减函数，故 q 夹逼方向反转，L1 闭式解落在 `[q_LB, q_UB]` 内。
+
+**边界**：线性化多面体极限分析，不是 SOCP 圆锥规划、不是幂型精确解；
+下限与 ψ 无关，Davis 折减单独报告（不混入数学夹逼）；深埋 `h/D>1.4`
+标记 `out-of-range`，不给出夹逼结论；`N_sat=18.2212` 仅为文献锚点，不由此推导。
+
 ### 6. `/api/sat` —— 文献饱和高度锚点
 
 请求 `{"params": {同 /api/solve}}`。

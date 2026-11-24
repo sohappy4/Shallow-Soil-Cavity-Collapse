@@ -38,6 +38,7 @@ bash 一键启动.sh
 | 动画 | 二维坍塌过程动画 | 滑体土粒逐帧下落、活门下移、地表漏斗成形（运动学演示，非 DEM/应力云图）；样本 `trapdoor_lab/verify/anim_preview.png` |
 | FEM | FEM 二维力学场（应力/塑性区） | 平面应变 Q4 + Drucker–Prager 径向返回 + 位移控制活门；输出偏应力云图、塑性区、压力—位移曲线；样本 `trapdoor_lab/verify/fem_preview.png`；定性—半定量扩展，非 FELA 上下界 |
 | FEM | FEM 应力场动态云图 | 逐位移步应力/塑性区演化，全场统一色标，可滑块逐帧查看 + GIF 自动播放（方案 M5/M6）；样本 `trapdoor_lab/verify/fem_demo.gif` |
+| FELA | FELA 极限分析上下界夹逼 | 线性化屈服面 + 对偶线性规划：内接多面体给静力下限、外接给运动上限；主动支护压力夹逼并包住 L1 闭式解，Davis 折减独立报告（方案 M7）；样本 `trapdoor_lab/verify/fela_bracket.png` |
 | 动态 | 参数扫描动态图件 | h / A / B / σ_t 逐帧重算，直接观察 h 跨 h_cr 时结论翻转 |
 | 报告 | 导出计算报告 (HTML) | 输入、结果、六图、Table 3/4、可复现性元数据一并导出 |
 
@@ -47,7 +48,7 @@ bash 一键启动.sh
 
 ```bash
 cd trapdoor_lab
-../venv/bin/python -m unittest discover -s tests   # 91 项回归（含 23 项 FEM）
+../venv/bin/python -m unittest discover -s tests   # 104 项回归（含 23 项 FEM + 13 项 FELA）
 ../venv/bin/python 自检.py                          # 13 项基准自检
 ```
 
@@ -84,7 +85,11 @@ cd trapdoor_lab
   按用户 2026-11-24 授权引入：应力场/塑性区/压力—位移曲线为数值解，
   但**不是严格 FELA 上下界**，DP 圆化准则与专著幂型 Hoek–Brown 不同族，
   小变形理想弹塑性、网格较粗，仅作定性—半定量演示；L1/L2/L3 仍为专著理论主结果。
-- 未实现：完整 FELA SOCP、Yade/PFC 独立 DEM 后端、三维锥形求解器、局部坍塌形态数据。
+- 「FELA 极限分析上下界夹逼」用线性化屈服面的对偶线性规划给出严格数学夹逼
+  （内接→静力下限、外接→运动上限，q 夹逼包住 L1 闭式解），但仍**不是 SOCP 圆锥规划**、
+  不是幂型精确解；下限与 ψ 无关、Davis 折减单独报告；深埋 h/D>1.4 因幂型包线无
+  临界状态封顶，显式标记非物理、不给夹逼结论；N_sat=18.2212 仅为文献锚点，本模块不推导。
+- 未实现：完整 FELA SOCP 圆锥规划、Yade/PFC 独立 DEM 后端、三维锥形求解器、局部坍塌形态数据。
 
 ## 安全
 
