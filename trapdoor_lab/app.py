@@ -86,6 +86,7 @@ from gtt import (
 from benchmarks import (
     saturation_anchor, LITERATURE_ANCHORS, check_literature_anchors,
 )
+from collapse_anim import build_animation
 
 PORT = int(os.environ.get("TRAPDOOR_PORT", "8765"))
 
@@ -165,6 +166,7 @@ HTML = r"""<!DOCTYPE html>
     <h2>L2 打靶—积分 / L3 速率链</h2>
     <button class="ghost" onclick="runL2()">L2 打靶求滑动面</button>
     <button class="ghost" onclick="runL3()">L3 速率时间线</button>
+    <button class="ghost" onclick="runCollapseAnim()">二维坍塌过程动画</button>
     <button class="ghost" onclick="toggleRate()">显示/隐藏 L3 参数</button>
     <div id="rateparams" style="display:block;margin-top:8px">
       <label>B_c 烟囱宽度 (m)</label><input id="rate_Bc" type="number" step="any" value="1.0">
@@ -213,6 +215,22 @@ HTML = r"""<!DOCTYPE html>
         </div>
       </div>
     </div>
+    <div id="animpane" style="display:none;margin-top:14px;border:1px solid var(--line);border-radius:6px;padding:12px">
+      <b>二维坍塌过程动画（运动学演示）</b>
+      <div class="note" style="margin:6px 0">土粒沿 L1/L2 滑面下落，前锋按 L3 速率推进，活门下移、地表漏斗成形。</div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:12px;align-items:start">
+        <svg id="animsVG" viewBox="0 0 620 430" width="100%" style="background:#fbfcfe;border:1px solid var(--line);border-radius:4px"></svg>
+        <div>
+          <input id="animSlider" type="range" min="0" max="1000" value="0" oninput="drawAnimFrame()" style="padding:0;width:100%">
+          <button class="ghost" onclick="toggleAnim()">播放 / 暂停</button>
+          <div id="animFrameInfo" class="note" style="margin-top:8px;line-height:1.7"></div>
+          <div class="note" style="margin-top:8px;color:#a00">
+            <b>边界：</b>这是运动学演示——粒子位移是满足滑面约束与体积守恒的构造模板，
+            不是 DEM 颗粒接触求解，也不是有限元应力云图；不输出应力/塑性区数值。
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="note" style="margin-top:14px">
       注：埋深比 n = h/(2l) = h/D（洞全宽 D=2l）；q1a/q1b 为程序输出，非输入。
       B=1 自动切换线性极限分支（h_cr = l/A），不与闭式解比较。
@@ -229,6 +247,7 @@ const KEYS = ["sigma_c","A","B","sigma_t","gamma","q2","l","h"];
 const PRESETS = __PRESETS__;
 const DEFAULT = __DEFAULT__;
 let LAST = null, LAST_L3 = null, PLAY_TIMER = null;
+let LAST_ANIM = null, ANIM_TIMER = null;
 let SCAN = {timer:null, i:0, busy:false};
 
 function fill(p){ KEYS.forEach(k=>document.getElementById(k).value = p[k]); }
@@ -374,7 +393,9 @@ async function runL3(){
 
 function hidePlayer(){
   if(PLAY_TIMER){ clearInterval(PLAY_TIMER); PLAY_TIMER=null; }
+  if(ANIM_TIMER){ clearInterval(ANIM_TIMER); ANIM_TIMER=null; }
   const e=document.getElementById("player"); if(e) e.style.display="none";
+  const a=document.getElementById("animpane"); if(a) a.style.display="none";
 }
 
 function zAtTime(t){
@@ -430,6 +451,77 @@ function togglePlay(){
     if(v>1000){ v=0; }
     e.value=v; drawL3Frame();
   },40);
+}
+
+// ===== 二维坍塌过程动画（运动学演示）=====
+async function runCollapseAnim(){
+  document.getElementById("err").textContent=""; hidePlayer();
+  let params; try{ params=read(); }
+  catch(e){ document.getElementById("err").textContent=e.message; return; }
+  if(ANIM_TIMER){ clearInterval(ANIM_TIMER); ANIM_TIMER=null; }
+  document.getElementById("animSlider").value=0;
+  const r=await fetch("/api/anim",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({params:params})});
+  const d=await r.json();
+  if(d.error){ document.getElementById("err").textContent=d.error; return; }
+  LAST_ANIM=d.result;
+  document.getElementById("animpane").style.display="block";
+  drawAnimFrame();
+}
+
+function toggleAnim(){
+  if(!LAST_ANIM) return;
+  if(ANIM_TIMER){ clearInterval(ANIM_TIMER); ANIM_TIMER=null; return; }
+  const n=LAST_ANIM.frames.length;
+  ANIM_TIMER=setInterval(()=>{
+    const e=document.getElementById("animSlider");
+    let v=parseFloat(e.value)+1000/(n-1);
+    if(v>1000){ v=0; }
+    e.value=v; drawAnimFrame();
+  },60);
+}
+
+function drawAnimFrame(){
+  if(!LAST_ANIM) return;
+  const A=LAST_ANIM, g=A.geometry;
+  const n=A.frames.length;
+  const idx=Math.max(0,Math.min(n-1,Math.round(parseFloat(document.getElementById("animSlider").value)/1000*(n-1))));
+  const f=A.frames[idx];
+  const l=g.l, h=g.h, D=g.D;
+  const xmin=-0.3*D, xmax=1.3*D, zmin=-0.05*h, zmax=h+0.32*D;
+  const X=x=>60+(x-xmin)/(xmax-xmin)*540;
+  const Z=z=>40+(z-zmin)/(zmax-zmin)*350;
+  let s='';
+  // 地表线 + 漏斗凹陷
+  s+='<polyline fill="none" stroke="#333" stroke-width="2" points="'+
+     f.surface.map(p=>X(p[0]).toFixed(1)+','+Z(p[1]).toFixed(1)).join(' ')+'"/>';
+  // 滑面（左右两支）
+  s+='<polyline fill="none" stroke="#1f6fb5" stroke-width="2" stroke-dasharray="5 3" points="'+
+     f.slip.map(p=>X(p[0]).toFixed(1)+','+Z(p[1]).toFixed(1)).join(' ')+'"/>';
+  // 静态土层底色（滑体外）——用整块浅色，滑体内稍深
+  // 活门：洞底 z=h，从 x=0 到 2l，下移 door_down
+  const yd=Z(h+f.door_down);
+  s+='<rect x="'+X(0).toFixed(1)+'" y="'+Z(h).toFixed(1)+'" width="'+(X(D)-X(0)).toFixed(1)+'" height="6" fill="#999"/>';
+  s+='<line x1="'+X(0).toFixed(1)+'" y1="'+yd.toFixed(1)+'" x2="'+X(D).toFixed(1)+'" y2="'+yd.toFixed(1)+'" stroke="#d33" stroke-width="5"/>';
+  // 前锋线（自洞底向上推进，当前高度 h - z_front）
+  const yf=Z(h-f.z_front);
+  s+='<line x1="'+X(0).toFixed(1)+'" y1="'+yf.toFixed(1)+'" x2="'+X(D).toFixed(1)+'" y2="'+yf.toFixed(1)+'" stroke="#e8a33d" stroke-width="2" stroke-dasharray="3 3"/>';
+  // 粒子：静止灰、运动红；裁切到 zmax
+  for(const p of f.particles){
+    if(p[1]>zmax) continue;
+    const px=X(p[0]), py=Z(p[1]);
+    if(px<58||px>602||py<38||py>392) continue;
+    s+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="2.1" fill="'+(p[2]?'#d94b3a':'#9fb0c0')+'" opacity="'+(p[2]?'0.95':'0.55')+'"/>';
+  }
+  // 标注
+  s+='<text x="60" y="26" font-size="12" fill="#333">地表</text>';
+  s+='<text x="60" y="'+(Z(h)+16).toFixed(1)+'" font-size="12" fill="#333">洞底 z=h</text>';
+  s+='<text x="'+(X(D)+6).toFixed(1)+'" y="'+(yf+4).toFixed(1)+'" font-size="11" fill="#c80">前锋</text>';
+  document.getElementById("animsVG").innerHTML=s;
+  document.getElementById("animFrameInfo").innerHTML=
+    "帧 "+f.i+" / "+(n-1)+"<br>t = "+fmt(f.t,3)+" s / "+fmt(A.meta.T,3)+" s<br>"+
+    "前锋推进 = "+fmt(f.z_front,3)+" m<br>活门下移 = "+fmt(f.door_down,3)+" m<br>"+
+    "地表漏斗半径 = "+fmt(f.crater_r,3)+" m<br>阶段："+f.stage;
 }
 
 async function runMirror(){
@@ -586,7 +678,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         if path not in ("/api/solve", "/api/l2", "/api/l3", "/api/gtt",
-                        "/api/sat", "/api/mirror"):
+                        "/api/sat", "/api/mirror", "/api/anim"):
             self._send(404, b"not found", "text/plain")
             return
         try:
@@ -600,6 +692,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"result": res, "fig": fig})
             elif path == "/api/sat":
                 self._json({"result": saturation_anchor(payload["params"])})
+            elif path == "/api/anim":
+                params = payload["params"]
+                passive = bool(payload.get("passive", False))
+                rate = solve_rate(params, payload.get("phi_deg"))
+                anim = build_animation(params, rate=rate,
+                                       opts={"passive": passive,
+                                             "n_frames": int(payload.get("n_frames", 48))})
+                self._json({"result": anim})
             elif path == "/api/solve":
                 params, mode = payload["params"], payload.get("mode", "active")
                 res = solve(params, mode)

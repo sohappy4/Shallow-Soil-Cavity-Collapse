@@ -35,6 +35,7 @@ bash 一键启动.sh
 | GTT | GTT 切点 / 表13.2 / 定理13.2 | 广义切线法：切线参数、包线夹逼、切点扫描；原表舍入差显式标注 |
 | 锚点 | 文献锚点 h_sat / h_cr | N_sat=18.2212、h_sat/D=4.555 自洽核验与门槛区分 |
 | 对照 | 主动/被动镜像对照 | 主动滑面关于 x=l 镜像后与被动逐点比对 |
+| 动画 | 二维坍塌过程动画 | 滑体土粒逐帧下落、活门下移、地表漏斗成形（运动学演示，非 DEM/应力云图）；样本 `trapdoor_lab/verify/anim_preview.png` |
 | 动态 | 参数扫描动态图件 | h / A / B / σ_t 逐帧重算，直接观察 h 跨 h_cr 时结论翻转 |
 | 报告 | 导出计算报告 (HTML) | 输入、结果、六图、Table 3/4、可复现性元数据一并导出 |
 
@@ -44,8 +45,8 @@ bash 一键启动.sh
 
 ```bash
 cd trapdoor_lab
-../venv/bin/python -m unittest discover -s tests   # 49 项回归
-../venv/bin/python 自检.py                          # 12 项基准自检
+../venv/bin/python -m unittest discover -s tests   # 68 项回归
+../venv/bin/python 自检.py                          # 13 项基准自检
 ```
 
 `.github/workflows/test.yml` 在每次 push/PR 上跑全量单测、自检与编译检查。
@@ -75,6 +76,9 @@ cd trapdoor_lab
   程序不虚构严格荷载上界，也不冒充 FELA 上下界。
 - L1 闭式解只有沿滑面的一维场，「参数扫描动态图件」不是二维应力云图；
   二维云图需 FELA/有限元层，未实现。
+- 「二维坍塌过程动画」是运动学演示：土粒位移是满足滑面约束与体积守恒的构造模板，
+  不是 DEM 颗粒接触求解，也不输出应力/塑性区数值。真·力学场需 FELA/FEM（M7）
+  或 Yade/PFC 独立后端（M8）；后者在 aarch64 银河麒麟安装极难。
 - 未实现：完整 FELA SOCP、DEM 后端、三维锥形求解器、局部坍塌形态数据。
 
 ## 安全

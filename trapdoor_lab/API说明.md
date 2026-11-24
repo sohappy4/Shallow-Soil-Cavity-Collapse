@@ -82,6 +82,19 @@
 注意：当主动出露点被裁剪到 x=0（线性分支 dx>l）时，几何上不再严格镜像，
 `clipped=true`、`mirror_ok=false`，`note` 会说明原因，不假装对称。
 
+### 5b. `/api/anim` —— 二维坍塌过程动画
+
+请求：`{"params": {同 /api/solve}, "n_frames": 48, "passive": false, "phi_deg": null}`。
+响应 `result` 含 `meta`（`solution_type="kinematic-animation"`、`T`、`v`、`R_final`、
+`boundary_note`）、`geometry`（`l/h/D/x_outcrop/R_final`）、`frames`（逐帧）。
+
+每帧含 `t`、`z_front`（前锋自洞底推进高度）、`door_down`（活门下移）、
+`crater_r`（地表漏斗半径）、`stage`、`surface`（地表折线）、`slip`（滑面折线）、
+`particles`（`[x,z,flag]`，flag=1 表示该粒子运动中）。前端据此画 SVG 并播放。
+
+**边界**：运动学演示——粒子位移是满足滑面约束与体积守恒的构造模板，
+不是 DEM 颗粒接触求解，也不是有限元应力云图；不输出应力/塑性区数值（属 M7 远期）。
+
 ### 6. `/api/sat` —— 文献饱和高度锚点
 
 请求 `{"params": {同 /api/solve}}`。
